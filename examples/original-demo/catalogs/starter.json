@@ -1,0 +1,16 @@
+{
+  "schemaVersion": "content-0",
+  "id": "original:starter",
+  "species": [
+    {
+      "id": "original:mosskip",
+      "name": "Mosskip",
+      "sprite": "original:mosskip-sprite"
+    },
+    {
+      "id": "original:emberling",
+      "name": "Emberling",
+      "sprite": "original:mosskip-sprite"
+    }
+  ]
+}

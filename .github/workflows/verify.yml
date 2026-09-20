@@ -1,0 +1,29 @@
+name: Verify Bend foundation
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  linux-cpu:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Node.js for JavaScript differential checks
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install native compiler
+        run: sudo apt-get update && sudo apt-get install -y clang
+      - name: Install pinned local Bend
+        run: python3 scripts/setup_toolchain.py
+      - name: Verify laws, negative gates and native fixtures
+        run: python3 scripts/verify.py
+      - name: Upload feasibility evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-cpu-feasibility
+          path: build/evidence/
+          if-no-files-found: ignore

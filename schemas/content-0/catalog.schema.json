@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "content-0/catalog.schema.json",
+  "title": "Content-0 catalog",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "id", "species"],
+  "properties": {
+    "schemaVersion": {"const": "content-0"},
+    "id": {"$ref": "#/$defs/id"},
+    "species": {"type": "array", "maxItems": 256, "items": {"$ref": "#/$defs/species"}}
+  },
+  "$defs": {
+    "id": {"type": "string", "pattern": "^[a-z][a-z0-9_-]{0,31}:[a-z][a-z0-9_-]{0,31}$"},
+    "name": {"type": "string", "minLength": 1, "maxLength": 128},
+    "species": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "name", "sprite"],
+      "properties": {"id": {"$ref": "#/$defs/id"}, "name": {"$ref": "#/$defs/name"}, "sprite": {"$ref": "#/$defs/id"}}
+    }
+  }
+}

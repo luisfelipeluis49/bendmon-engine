@@ -1,0 +1,7 @@
+# Workspace-local compiler and downloaded release archives
+.toolchain/
+# Reproducible build/test outputs
+build/
+# Python bytecode and local test caches
+__pycache__/
+*.pyc

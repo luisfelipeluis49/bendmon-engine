@@ -1,0 +1,31 @@
+# Proposed battle timeline
+
+All behavior marked proposed below needs owner approval before implementation. Fixed: discrete deterministic timeline, independent move timing/cooldowns, no animation/frame authority.
+
+## Clock and scheduler
+
+Recommend nonnegative integer logical ticks with checked addition, initially specified mathematically and later refined to a compiler-supported bounded representation. Tick duration is a ruleset decision; rendering maps ticks to visual time without feeding frame deltas into rules. Exhaustion returns a deterministic terminal diagnostic; never wrap to zero.
+
+Proposed phase machine: Ready → Windup → Execute (atomic ordered effects) → Recovery → Ready. Readiness requires alive/active and recovery finished; each move also requires its own cooldown finished. Recovery and cooldown are independent. One actor has at most one reserved action.
+
+Proposed total event key: `(dueTick ascending, phaseRank ascending, priority descending, actorId ascending, actionSequence ascending, eventOrdinal ascending)`. Proposed queued phase ranks: expiry/readiness, execution. Same-action aftermath belongs inside the execution transaction; completion is an immediate check after that whole transaction, outside the queued phase ranks. On terminal completion discard pending battle events and commit the battle result once. Boundary semantics use `now >= deadline`; expiration happens before execution at the same tick. Stable IDs are allocated before battle and remain stable; the fairness implications of actor-ID tie-breaking need D02 approval. Never use insertion order from a hash map or thread completion order.
+
+At each step drain already-due deterministic events in total order, evaluate completion at the approved boundary, then surface ready command opportunities. When required commands are missing, return AwaitingCommands with unchanged time. When no commands are missing, advance to the next due event. If no event exists, first return any applicable completion result, otherwise surface Ready command opportunities; if a nonterminal state has neither events nor command opportunities, return a deterministic SchedulerStalled diagnostic without advancing time. This is an invariant failure to test, not an implicit victory. No automatic repeated action is scheduled at the same tick: zero-windup actions enqueue an execution event at the current tick only after the entire command batch has been validated and its reservations committed. Drain these events by the same total event key, not command-arrival or batch-commit order; they cannot reopen a same-tick input opportunity. Recommend minimum positive recovery; exact limit awaits approval. Per-step fuel bounds implementation work; fuel exhaustion yields a resumable internal cursor, not a partial externally visible action.
+
+## Recommended selection policy (D01)
+
+Pause logical time for a command barrier covering all currently ready controllable actors. Collect one legal command or explicit Wait per actor; AI observes the same pre-command snapshot and chooses deterministically. Validate and commit the batch in stable actor order; reject conflicting or stale commands with typed diagnostics. Reserve/commit the valid batch atomically without executing effects during the commit loop; an invalid or mutually conflicting batch returns diagnostics and leaves simulation state/RNG unchanged for correction against the unchanged barrier snapshot; never let replacement input observe partially committed actions. Once committed, execute due actions in event-key order. Future networking would record the accepted batch order. This supports accessibility and reproducible local play. Continuous time adds input latency policy and real-time pressure; slowed time needs another clock. Neither is silently assumed.
+
+Proposed Wait command moves a Ready actor into a wait/recovery phase until `now + WAIT_TICKS`, where WAIT_TICKS is an engine-owned positive duration awaiting D03 approval. It consumes no move cooldown and creates a scheduled readiness event. A waiting actor is excluded from barriers until that event; an actor with every move cooling can always choose Wait if the clock addition is representable. This prevents a zero-time loop of immediately reopening the same barrier.
+
+## Acceptance and execution
+
+Proposed acceptance preconditions: battle active; actor alive/active/Ready; target legal; source moves known; move/recipe allowed and learned; every source off cooldown; resources sufficient; timestamps representable. Reserve the actor and all sources atomically. An invalid command consumes no RNG, time, items or source cooldown.
+
+Recommend cooldown deadlines anchored at accepted command tick, each greater than zero and monotonically extended rather than shortened. Reservations prevent reuse even if a cooldown expires during windup/recovery. Mix penalty must strictly exceed each source's ordinary cooldown for the same acceptance point. Exact penalty and ordinary cooldown bounds await D05. Interruption policy is deferred; MVP recommendation disallows voluntary cancellation and keeps engaged cooldown on KO/fizzle, without emitting successful-use progress.
+
+At execution revalidate actor and target state; recommended no automatic retargeting. A now-invalid target produces a deterministic fizzle with no hit RNG. Ordered effects commit as one action; a KO blocks later actors' pending actions, and battle completion is checked after the action transaction. These choices affect apparent simultaneity and await D02/D03. Damage, accuracy, capture and victory/reward formulas are not specified numerically here.
+
+## Test obligations
+
+Golden traces must cover equal-tick KOs, priority ties, expiry boundaries, input arrival permutations, zero-windup moves, positive recovery, cooldown expiry during windup, target invalidation, clock exhaustion, source reservations, all-moves-cooling Wait, all-Wait batches, empty-queue stalls, batch rejection/correction against the same snapshot, zero-windup priority ordering, immediate completion versus pending same-tick actions, rejection with unchanged RNG and termination. The same accepted log under 30 FPS, 60 FPS and headless projection must have identical state/event hashes. Determinism is not a promise of fairness; tie semantics need explicit review.

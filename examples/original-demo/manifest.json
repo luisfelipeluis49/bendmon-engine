@@ -1,0 +1,15 @@
+{
+  "schemaVersion": "content-0",
+  "catalogs": ["catalogs/starter.json"],
+  "maps": ["maps/glade.json"],
+  "encounters": ["encounters/glade-edge.json"],
+  "assets": [
+    {
+      "id": "original:mosskip-sprite",
+      "path": "assets/mosskip.ppm",
+      "mediaType": "image/x-portable-pixmap",
+      "bytes": 203,
+      "sha256": "fda077b66f3fea2a2ba70decc8f23cdde6aaa4f7a0cd1d2f481d0c71ad28662a"
+    }
+  ]
+}

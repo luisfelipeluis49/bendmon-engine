@@ -1,0 +1,22 @@
+#!/bin/sh
+set -eu
+
+workspace=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+bend="$workspace/.toolchain/release/bend/bin/bend"
+
+if [ ! -x "$bend" ]; then
+  printf 'scripts/bend: local Bend binary is missing: %s\n' "$bend" >&2
+  printf 'See docs/architecture/toolchain-evidence.md for bootstrap details.\n' >&2
+  exit 127
+fi
+
+# Upstream spells this command `bend version`; accept the conventional alias
+# requested by the feasibility work order as well.
+if [ "${1:-}" = "--version" ] && [ "$#" -eq 1 ]; then
+  set -- version
+fi
+
+# Disable the optional daily update check so local builds are deterministic
+# and never require network access.
+export BEND_NO_TELEMETRY=1
+exec "$bend" "$@"

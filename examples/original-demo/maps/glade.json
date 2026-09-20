@@ -1,0 +1,8 @@
+{
+  "schemaVersion": "content-0",
+  "id": "original:glade",
+  "name": "Mosslight Glade",
+  "width": 8,
+  "height": 8,
+  "encounters": ["original:glade-edge"]
+}

@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "content-0/map.schema.json",
+  "title": "Content-0 map",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "id", "name", "width", "height", "encounters"],
+  "properties": {
+    "schemaVersion": {"const": "content-0"},
+    "id": {"$ref": "#/$defs/id"},
+    "name": {"$ref": "#/$defs/name"},
+    "width": {"type": "integer", "minimum": 1, "maximum": 512},
+    "height": {"type": "integer", "minimum": 1, "maximum": 512},
+    "encounters": {"type": "array", "maxItems": 256, "uniqueItems": true, "items": {"$ref": "#/$defs/id"}}
+  },
+  "$defs": {
+    "id": {"type": "string", "pattern": "^[a-z][a-z0-9_-]{0,31}:[a-z][a-z0-9_-]{0,31}$"},
+    "name": {"type": "string", "minLength": 1, "maxLength": 128}
+  }
+}

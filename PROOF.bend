@@ -35,3 +35,12 @@ def Laws.source_duplicate_rejected():
 
 def Laws.battle_driver_deterministic(fuel, state):
   {==}
+
+def Laws.battle_hp_saturation():
+  {==}
+
+def Laws.battle_reinforcement_order():
+  {==}
+
+def Laws.battle_runtime_deterministic(fuel, state):
+  {==}

@@ -1,6 +1,6 @@
 # Monster RPG Maker — architecture plan
 
-Status: implementation authorized after planning review. M0 local foundation and M2 Content-0 are implemented locally; remote CI/live device gates remain pending. The first M3 battle vertical slice is implemented and locally verified, with its remaining scope recorded in `docs/architecture/M3-STATUS.md`. On 2026-09-21 the owner approved every remaining recommended decision, including the R01–R13 and U01–U13 closures. No currently identified owner-choice blocker remains; future changes use explicit ruleset versioning. Fixed requirements and approved defaults are recorded in `docs/DECISIONS.md`.
+Status: implementation authorized after planning review. M1 architecture, M2 Content-0 and M3 headless battle are complete and verified; M0 has passed its local, live Linux desktop and clean Ubuntu runtime gates, with hosted GitHub CI tracked separately in `docs/architecture/M0-STATUS.md`. On 2026-09-21 the owner approved every remaining recommended decision, including the R01–R13 and U01–U13 closures. No currently identified owner-choice blocker remains; future changes use explicit ruleset versioning. Fixed requirements and approved defaults are recorded in `docs/DECISIONS.md`.
 
 ## Objective and sequence
 
@@ -9,9 +9,9 @@ Build one content-agnostic, primarily Bend 2 engine with a deterministic headles
 | Milestone | Deliverable | Dependencies / approval gate | Implementer | Review / exit evidence |
 |---|---|---|---|---|
 | M0 Bootstrap / feasibility | Pinned Bend 2, guide audit, trivial law/proof, headless binary, CI, graphics/audio and host-call spikes | Owner identifies intended toolchain; work order approval | Sol; Luna CI/docs | Astra reviews toolchain/FFI; proof passes locally and in CI; platform matrix records evidence |
-| M1 Architecture / formal domain | Approved domain/contracts, candidate laws, decision resolutions | This package; M0 feasibility before representation freeze | Astra specifications; Sol proof prototypes | Separate Astra review plus owner approval; no outstanding blocker for next slice |
+| M1 Architecture / formal domain | **Complete:** approved domain/contracts, candidate-law boundary, D01–D19/U01–U13 closure, ADR-01–15 and exact semantic identity | M0 feasibility before representation freeze | Astra specifications; production-linked proof prototypes | Architecture contract suite, separate review, owner approval and canonical proof gate |
 | M2 Content kernel | **Implemented locally:** typed IDs, strict bounded parser/validator, manifests, catalogs, reference resolution, canonical identity and useful diagnostics | Balance-independent contract fixed; later schema families remain additive work | Sol; Luna schema fixtures under fixed contract | 102-check repository gate plus hostile-input suite; separate Sol/Astra review recorded in M2 status |
-| M3 Headless battle | State, scheduler, targeting, readiness, cooldown, RNG, completion, deterministic baseline AI, replay harness, minimal approved damage operation | M2; timing, damage and RNG decisions approved | Sol | Astra semantics review; repeated command logs yield equal canonical states |
+| M3 Headless battle | **Implemented locally:** state, scheduler, targeting, readiness, typed move cooldowns, RNG, combat resolution, completion, rosters, switching, escape, bounded driver and replay harness | M2; timing, damage and RNG decisions approved | Sol; Luna mechanical fixtures | 132-check repository gate; native/JS goldens and repeated command logs yield equal canonical states |
 | M4 Effect algebra | Closed typed effect interpreter and representative physical/special/status/heal/buff/conditional moves | M3; stacking/failure semantics approved | Sol; Luna fixtures | Independent Sol review; law gate and effect-order golden tests |
 | M5 Multi-type attacks | Generic nonempty component list, split allocation and independent modifiers | M4; rounding/STAB/damage decisions approved | Sol | Astra review; 1/2/3+ component examples and allocation laws |
 | M6 Mix / discovery / harmony | Explicit recipes, atomic source engagement, observation, training, individual harmony | M5; all relevant D05–D10 decisions approved | Sol; Luna approved sample recipes | Independent Sol review then Astra; MIX-1–8 and learning tests/proofs |
@@ -23,7 +23,7 @@ Build one content-agnostic, primarily Bend 2 engine with a deterministic headles
 | M12 Hardening / optimization | Fuzzing, resource caps, profiles, deterministic parallel workloads, load diagnostics | M11; security tests begin M2 | Sol; Luna generated corpora | Astra reviews invariants; measured CPU/GPU comparisons, no speculative GPU mandate |
 | M13 Original demonstration | Exploration, capture, trainer fight, multi-type, trained mix, harmony, quests/dialogue, progression, save/load | M12 | Luna original content; Sol integration | Astra final architecture review, IP/license inventory, full creator-to-runtime acceptance |
 
-All significant core implementations follow Astra specification → Sol implementation/tests/proofs → separate reviewer → Astra architecture-sensitive review. Luna may not author semantic changes. Work orders must use `docs/work-orders/TEMPLATE.md`; future milestones must be decomposed into bounded orders before work begins. M0 and Content-0 have completed their documented local slices; M3 is decomposed in `docs/work-orders/M3-BATTLE.md`.
+All significant core implementations follow Astra specification → Sol implementation/tests/proofs → separate reviewer → Astra architecture-sensitive review. Luna may not author semantic changes. Work orders must use `docs/work-orders/TEMPLATE.md`; future milestones must be decomposed into bounded orders before work begins. M1–M3 have completed their documented scopes; their evidence is recorded in the milestone status files.
 
 ## Dependency graph
 
@@ -53,13 +53,13 @@ flowchart LR
   M11 --> M12 --> M13
 ```
 
-M0 precedes proof-dependent domain commitment. M1 drafting happens now; approval does not follow automatically from internal review. Renderer and editor feasibility prototypes may occur early, but do not satisfy M9/M10 exit criteria. Replay contracts and regression coverage start before M11. Parallelism applies to independent work and pure workloads, not conflicting battle transitions.
+M0 precedes proof-dependent domain commitment. M1 is approved and complete; later production milestones adopt its candidate laws only when their real implementations exist. Renderer and editor feasibility prototypes do not satisfy M9/M10 exit criteria. Replay contracts and regression coverage start before M11. Parallelism applies to independent work and pure workloads, not conflicting battle transitions.
 
 ## Initial planning evidence (historical) and next action
 
 Workspace: `/home/luis/bend`, Linux x86_64. Only `AGENTS.md` existed before this package. `bend --version` and `bend guide` both returned command-not-found (exit 127). No `.bend` source or installed guide was found in the inspected locations. `git status` reports this is not a usable Git repository despite a read-only `.git` directory. No repository initialization, compiler installation, Bend source, executable schema, or engine was created.
 
-The missing-compiler condition above was resolved during implementation. Read `docs/architecture/M0-STATUS.md` for verified local results and remaining gates. Typed IDs and strict inert Content-0 validation are now implemented; read `docs/architecture/M2-STATUS.md`. Timing, damage and RNG rules are approved, so the next gameplay work is the M3 reducer and replay harness.
+The missing-compiler condition above was resolved during implementation. Read `docs/architecture/M0-STATUS.md` for feasibility evidence and `docs/architecture/M1-STATUS.md` for the closed architecture contract. Typed IDs and strict inert Content-0 validation are implemented; read `docs/architecture/M2-STATUS.md`. The deterministic headless battle and replay milestone is complete; read `docs/architecture/M3-STATUS.md`. The next gameplay milestone is M4's closed effect algebra.
 
 ## Completion policy
 

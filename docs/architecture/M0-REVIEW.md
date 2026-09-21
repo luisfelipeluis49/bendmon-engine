@@ -19,3 +19,13 @@ Accept the local implementation slice. Do not mark the entire M0 milestone compl
 ## Known limitation
 
 The frame and tone files are atomically replaced individually, not as one transaction. A failure after writing the frame can leave it beside an older tone. They are independent feasibility artifacts; a future production bundle needs generation-directory or manifest commit semantics before claiming atomic bundle publication.
+
+## Formal-exit revalidation
+
+The 2026-09-21 closure pass retained every reviewed boundary and added evidence
+that was previously unavailable: a live XWayland/X11 window and input event, a
+successful PulseAudio/PipeWire stream of the generated tone, and execution of
+the compiler-free binary in a network-disabled clean Ubuntu 24.04 container.
+The integrated verifier now includes 133 checks and the M1 architecture contract
+suite. Hosted Ubuntu CI remains the final candidate-commit gate; Windows,
+macOS, GPU and production renderer/editor work are later milestones under D18.

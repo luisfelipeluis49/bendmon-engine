@@ -48,10 +48,31 @@ workspace-pinned Bend release and clang; runtime execution is CPU-only for this
 milestone. The parallel fixture can be run with explicit CPU workers, for
 example `./build/parallel_cpu --threads 4 --gpu off`.
 
-Presentation verification emits `build/evidence/presentation/frame.ppm` and
+Headless presentation verification emits `build/evidence/presentation/frame.ppm` and
 `build/evidence/presentation/tone.wav` (and a PNG preview where supported).
 These are generated boundary artifacts: the tests demonstrate repeatable generation and file format/ABI handling on the tested host. They do not claim a live display or live audio device
 playback was available.
+
+On a Linux desktop with X11/XWayland and PulseAudio/PipeWire, run the separate
+live gate:
+
+```sh
+tests/feasibility/presentation/run_live.sh
+```
+
+It displays the generated frame, verifies an input event delivered by the X
+server and streams the tone through the active audio server. This gate is not
+run in headless CI.
+
+After the main verifier builds `build/headless`, the clean Ubuntu distribution
+gate is:
+
+```sh
+scripts/verify_clean_distribution.sh
+```
+
+It runs the binary with networking disabled in a digest-pinned Ubuntu 24.04
+container that contains neither the repository nor the Bend compiler.
 
 GitHub Actions repeats this flow on `ubuntu-24.04`, installs clang, selects
 Node.js 20, runs the Python verifier, and uploads `build/evidence/` even when a

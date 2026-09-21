@@ -10,7 +10,7 @@ type RngSampleResult is Data:
   RngSampled{state: RngState, value: U32, candidates: Nat}
   RngInvalidState{state: RngState}
   RngInvalidBound{state: RngState}
-  RngSamplingExhausted{state: RngState}
+  RngSamplingExhausted{state: RngState, candidates: Nat}
 
 def rotl(+value: U32, +amount: Nat, +inverse: Nat) -> U32:
   U32.or(U32.shln(value, amount), U32.shrn(value, inverse))
@@ -50,7 +50,7 @@ def sample_machine(
 ) -> RngSampleResult:
   match fuel machine:
     case 0n _:
-      RngSamplingExhausted{original}
+      RngSamplingExhausted{original, candidates}
     case 1n+rest SampleNeed{current}:
       sample_machine(rest, step_machine(next(current)), original, bound,
         threshold, 1n+candidates)

@@ -21,7 +21,7 @@ This is the single planning registry; no executable registry exists yet. Every l
 | HARMONY_PROGRESS / TIERS | successful-use counter and thresholds | integer 0–40; six ordered tiers | 0, 5, 10, 20, 30, 40 | HARM-1–3; D06 |
 | HARMONY_ACCURACY / CRIT_BONUS | tier packages / probability units | nondecreasing; ordinary crit remains capped | acc 0/100/200/300/400/500; crit 0/125/250/375/500/625 | D06; only meaningful valid mixed executions progress |
 | PROBABILITY_SCALE | denominator for accuracy/critical/capture chances | exact positive integer | 10000; one unit = 0.01 percentage points | RNG, deterministic previews; D04 |
-| RNG_ALGORITHM | deterministic gameplay generator | versioned exact U32 transition | xoshiro128**; four U32 words; all-zero forbidden; rejection-sampled bounds | DET-1, REPLAY-1; D19 |
+| RNG_ALGORITHM | deterministic gameplay generator | versioned exact U32 transition | `xoshiro128ss-1.1`; four U32 words; all-zero forbidden; rejection-sampled bounds | DET-1, REPLAY-1; D19 |
 | RNG_INITIAL_STATE | canonical battle RNG input | four U32 words, not all zero | explicit 128-bit state stored verbatim in save/replay | DET-1, REPLAY-1; D19 |
 | RNG_DRAW_POLICY | semantic accuracy/critical sampling | conditional fixed branch contract | no cancel/fizzle/always-hit draw; accuracy on ordinary attempt; critical only on successful nonimmune damaging hit | replay identity; D04/D19 |
 | RNG_SAMPLE_BUDGET | maximum U32 candidates per unbiased bounded sample | positive finite attempts | 64; exhaustion is atomic engine fault `RngSamplingExhausted` | bounded execution; D19 |

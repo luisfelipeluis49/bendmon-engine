@@ -22,6 +22,12 @@ law content_empty_reference:
 #
 # MIX-CD: ceil(3*c/2) strictly exceeds every legal ordinary cooldown c and
 # charging both source deadlines is atomic.
+# ESCAPE-ATOMIC: a rejected escape changes nothing; an attempted escape consumes
+# exactly its specified draw/action cost and successful escape commits no reward.
+# REINFORCE: queued reinforcements count as viable and fill vacant active slots
+# in canonical order before terminal victory is evaluated.
+# SWITCH-ATOMIC: voluntary and forced replacement either commit one legal active
+# identity transition or leave battle state unchanged; locked targets never retarget.
 # HARM-TIER: the six mastery thresholds and accuracy/critical packages are
 # monotone and remain within the ordinary probability caps.
 # MIX-ALLOC: quotient/remainder allocation over 1..4 distinct TypeIds preserves

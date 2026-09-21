@@ -1,0 +1,14 @@
+{
+  "fixture_version": "m3-fixtures-1",
+  "id": "invalid-target-fizzle",
+  "kind": "targeting",
+  "description": "A locked target invalid at execution fizzles and charges cooldown without RNG.",
+  "initial_state": {"tick": 300, "ready_actor_ids": ["actor-01"], "rng_state": [9, 10, 11, 12]},
+  "commands": [{"actor_id": "actor-01", "choice": "move", "move_id": "move-hit", "target_id": "actor-02", "windup": 30, "cooldown": 60}],
+  "state_changes_before_execution": [{"type": "target-removed", "target_id": "actor-02", "tick": 330}],
+  "expected": {"result": "awaiting-events", "rng_draws": 0, "events": [
+    {"type": "action-fizzle", "actor_id": "actor-01", "reason": "locked-target-invalid"},
+    {"type": "cooldown-started", "actor_id": "actor-01", "move_id": "move-hit", "deadline": 390},
+    {"type": "recovery-started", "actor_id": "actor-01", "duration": 30}
+  ]}
+}

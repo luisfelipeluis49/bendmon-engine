@@ -1,6 +1,6 @@
-# Proposed architecture
+# Architecture
 
-Status: recommendation, not approved gameplay semantics. Names below describe conceptual contracts, not Bend syntax.
+Status: initial architecture accepted by the 2026-09-21 U13 closure. Names below describe conceptual contracts, not Bend syntax; production representations still require milestone review and proof/test evidence.
 
 ## Boundaries and data flow
 

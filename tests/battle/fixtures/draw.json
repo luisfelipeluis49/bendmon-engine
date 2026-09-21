@@ -1,0 +1,14 @@
+{
+  "fixture_version": "m3-fixtures-1",
+  "id": "draw",
+  "kind": "completion",
+  "description": "An atomic action that removes the last viable combatant on both sides produces Draw.",
+  "initial_state": {"tick": 480, "ready_actor_ids": ["actor-01", "actor-02"], "rng_state": [17, 18, 19, 20]},
+  "commands": [{"actor_id": "actor-01", "choice": "move", "move_id": "move-mutual-ko", "target_id": "actor-02", "windup": 0}],
+  "expected": {"result": "Draw", "rng_draws": 2, "events": [
+    {"type": "action-executed", "actor_id": "actor-01"},
+    {"type": "same-action-aftermath", "effects": ["actor-01-ko", "actor-02-ko"]},
+    {"type": "battle-completed", "outcome": "Draw"},
+    {"type": "pending-events-discarded", "count": 0}
+  ]}
+}

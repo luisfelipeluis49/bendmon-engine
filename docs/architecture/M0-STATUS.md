@@ -12,7 +12,7 @@ Status: local foundation implemented; full M0 exit remains pending remote CI and
 - Independent CPU fork/join computation produces identical output with 1, 2 and 4 threads.
 - Copied headless executable runs from a clean temporary directory without Bend on PATH. This demonstrates compiler independence on this host, not a full clean-machine portability test.
 - A pure Bend presentation snapshot projects into a developer-owned C effect. It emits an original sprite/depth PPM frame and a 180ms mono WAV. File structure, repeatability, invalid host bounds, mismatched snapshot tags, invalid arguments and symlink-output rejection pass. Artifact output uses exclusive temporary files and atomic replacement; a hard-link regression confirms unrelated linked files remain unchanged.
-- `python3 scripts/verify.py`: 106 checks pass, including the generated XP table, M3 fixture corpus and canonical persistence boundary. Machine-readable evidence and command logs are generated in `build/evidence/`; no committed build binaries are required.
+- `python3 scripts/verify.py`: 118 checks pass, including the generated XP table, M3 fixture corpus, battle scheduler/reducer/RNG/combat goldens, replay checkpoints and canonical persistence boundary. Machine-readable evidence and command logs are generated in `build/evidence/`; no committed build binaries are required.
 
 ## Formal boundary
 

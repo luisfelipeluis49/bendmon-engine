@@ -1,0 +1,41 @@
+{
+  "vector_version": "m3-vectors-1",
+  "kind": "accuracy",
+  "vectors": [
+    {
+      "id": "accuracy-neutral",
+      "inputs": {"base_chance": 7500, "attacker_accuracy_stage": 0, "target_evasion_stage": 0, "always_hit": false, "sample": 7499},
+      "expected": {"net_stage_before_clamp": 0, "net_stage": 0, "factor_numerator": 3, "factor_denominator": 3, "pre_clamp_chance": 7500, "chance": 7500, "hit": true, "rng_draws": 1}
+    },
+    {
+      "id": "accuracy-positive-floor",
+      "inputs": {"base_chance": 5000, "attacker_accuracy_stage": 1, "target_evasion_stage": 0, "always_hit": false, "sample": 6665},
+      "expected": {"net_stage_before_clamp": 1, "net_stage": 1, "factor_numerator": 4, "factor_denominator": 3, "pre_clamp_chance": 6666, "chance": 6666, "hit": true, "rng_draws": 1}
+    },
+    {
+      "id": "accuracy-negative-floor",
+      "inputs": {"base_chance": 5000, "attacker_accuracy_stage": 0, "target_evasion_stage": 1, "always_hit": false, "sample": 3750},
+      "expected": {"net_stage_before_clamp": -1, "net_stage": -1, "factor_numerator": 3, "factor_denominator": 4, "pre_clamp_chance": 3750, "chance": 3750, "hit": false, "rng_draws": 1}
+    },
+    {
+      "id": "accuracy-lower-clamp",
+      "inputs": {"base_chance": 500, "attacker_accuracy_stage": -6, "target_evasion_stage": 6, "always_hit": false, "sample": 499},
+      "expected": {"net_stage_before_clamp": -12, "net_stage": -6, "factor_numerator": 3, "factor_denominator": 9, "pre_clamp_chance": 166, "chance": 500, "hit": true, "rng_draws": 1}
+    },
+    {
+      "id": "accuracy-upper-clamp",
+      "inputs": {"base_chance": 10000, "attacker_accuracy_stage": 6, "target_evasion_stage": -6, "always_hit": false, "sample": 9999},
+      "expected": {"net_stage_before_clamp": 12, "net_stage": 6, "factor_numerator": 9, "factor_denominator": 3, "pre_clamp_chance": 30000, "chance": 10000, "hit": true, "rng_draws": 1}
+    },
+    {
+      "id": "accuracy-always-hit-bypass",
+      "inputs": {"base_chance": 500, "attacker_accuracy_stage": -6, "target_evasion_stage": 6, "always_hit": true, "sample": null},
+      "expected": {"net_stage_before_clamp": -12, "net_stage": null, "factor_numerator": null, "factor_denominator": null, "pre_clamp_chance": null, "chance": null, "hit": true, "rng_draws": 0}
+    },
+    {
+      "id": "accuracy-ordinary-perfect-still-draws",
+      "inputs": {"base_chance": 10000, "attacker_accuracy_stage": 0, "target_evasion_stage": 0, "always_hit": false, "sample": 9999},
+      "expected": {"net_stage_before_clamp": 0, "net_stage": 0, "factor_numerator": 3, "factor_denominator": 3, "pre_clamp_chance": 10000, "chance": 10000, "hit": true, "rng_draws": 1}
+    }
+  ]
+}

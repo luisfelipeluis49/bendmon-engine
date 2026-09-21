@@ -1,0 +1,12 @@
+{
+  "fixture_version": "m3-fixtures-1",
+  "id": "simultaneous-readiness",
+  "kind": "scheduler",
+  "description": "Readiness events due at the same tick surface one stable command barrier.",
+  "initial_state": {"tick": 1620, "ready_actor_ids": [], "rng_state": [73, 74, 75, 76]},
+  "commands": [],
+  "expected": {"result": "awaiting-commands", "rng_draws": 0, "events": [
+    {"type": "readiness-expired", "due_tick": 1620, "actor_ids": ["actor-01", "actor-02"]},
+    {"type": "command-barrier-opened", "ready_actor_ids": ["actor-01", "actor-02"]}
+  ]}
+}

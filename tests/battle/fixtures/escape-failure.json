@@ -1,0 +1,13 @@
+{
+  "fixture_version": "m3-fixtures-1",
+  "id": "escape-failure",
+  "kind": "escape",
+  "description": "A failed escape consumes the action and recovery while keeping the battle active.",
+  "initial_state": {"tick": 1440, "ready_actor_ids": ["actor-01"], "encounter": "wild", "rng_state": [61, 62, 63, 64]},
+  "commands": [{"actor_id": "actor-01", "choice": "escape", "fastest_player_speed": 80, "fastest_enemy_speed": 120, "prior_failed_escapes": 0}],
+  "expected": {"result": "awaiting-events", "rng_draws": 1, "events": [
+    {"type": "escape-attempted", "chance": 4000},
+    {"type": "escape-failed", "actor_id": "actor-01"},
+    {"type": "recovery-started", "actor_id": "actor-01", "duration": 30}
+  ]}
+}

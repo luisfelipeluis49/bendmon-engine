@@ -1,0 +1,15 @@
+{
+  "fixture_version": "m3-fixtures-1",
+  "id": "rejection-unchanged",
+  "kind": "barrier",
+  "description": "One invalid command rejects the complete batch without changing state or RNG.",
+  "initial_state": {"tick": 1680, "ready_actor_ids": ["actor-01", "actor-02"], "rng_state": [77, 78, 79, 80]},
+  "commands": [
+    {"actor_id": "actor-01", "choice": "wait", "wait_ticks": 60},
+    {"actor_id": "actor-02", "choice": "move", "move_id": "move-hit", "target_id": "actor-03", "cooldown_deadline": 1800, "attempt_tick": 1680}
+  ],
+  "expected": {"result": "command-rejected", "rng_draws": 0, "events": [
+    {"type": "batch-rejected", "reason": "cooldown-active"},
+    {"type": "state-unchanged", "reason": "atomic-batch-rejection"}
+  ]}
+}

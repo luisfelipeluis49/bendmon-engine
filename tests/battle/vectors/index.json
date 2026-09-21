@@ -1,0 +1,4 @@
+{
+  "vector_version": "m3-vectors-1",
+  "files": ["accuracy.json", "critical.json", "damage.json"]
+}

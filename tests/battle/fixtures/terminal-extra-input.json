@@ -1,0 +1,16 @@
+{
+  "fixture_version": "m3-fixtures-1",
+  "id": "terminal-extra-input",
+  "kind": "completion",
+  "description": "Input accepted after a terminal action is ignored and cannot execute.",
+  "initial_state": {"tick": 1800, "ready_actor_ids": ["actor-01", "actor-02"], "rng_state": [85, 86, 87, 88]},
+  "commands": [
+    {"actor_id": "actor-01", "choice": "move", "move_id": "move-ko", "target_id": "actor-02", "windup": 0},
+    {"actor_id": "actor-02", "choice": "move", "move_id": "move-extra", "target_id": "actor-01", "windup": 0}
+  ],
+  "expected": {"result": "Victory", "rng_draws": 2, "events": [
+    {"type": "battle-completed", "outcome": "Victory"},
+    {"type": "pending-events-discarded", "count": 1},
+    {"type": "extra-input-discarded", "actor_id": "actor-02", "reason": "terminal-result"}
+  ]}
+}

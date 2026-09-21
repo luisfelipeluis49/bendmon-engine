@@ -1,0 +1,12 @@
+{
+  "fixture_version": "m3-fixtures-1",
+  "id": "rng-exhaustion",
+  "kind": "rng",
+  "description": "Bounded rejection sampling exhausts after 64 candidates and commits no partial action.",
+  "initial_state": {"tick": 1740, "ready_actor_ids": ["actor-01"], "rng_state": [81, 82, 83, 84]},
+  "commands": [{"actor_id": "actor-01", "choice": "move", "move_id": "move-hit", "target_id": "actor-02", "windup": 0}],
+  "expected": {"result": "RngSamplingExhausted", "rng_draws": 64, "events": [
+    {"type": "rng-sampling-exhausted", "candidate_count": 64},
+    {"type": "action-not-committed", "reason": "atomic-rng-failure"}
+  ]}
+}

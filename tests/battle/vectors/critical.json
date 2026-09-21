@@ -1,0 +1,36 @@
+{
+  "vector_version": "m3-vectors-1",
+  "kind": "critical",
+  "vectors": [
+    {
+      "id": "critical-baseline-hit",
+      "inputs": {"damaging": true, "nonimmune": true, "critical_bonus": 0, "damage_before_critical": 23, "sample": 624},
+      "expected": {"uncapped_chance": 625, "chance": 625, "critical": true, "damage_after": 46, "rng_draws": 1}
+    },
+    {
+      "id": "critical-cap-hit",
+      "inputs": {"damaging": true, "nonimmune": true, "critical_bonus": 3000, "damage_before_critical": 23, "sample": 2499},
+      "expected": {"uncapped_chance": 3625, "chance": 2500, "critical": true, "damage_after": 46, "rng_draws": 1}
+    },
+    {
+      "id": "critical-cap-miss",
+      "inputs": {"damaging": true, "nonimmune": true, "critical_bonus": 3000, "damage_before_critical": 23, "sample": 2500},
+      "expected": {"uncapped_chance": 3625, "chance": 2500, "critical": false, "damage_after": 23, "rng_draws": 1}
+    },
+    {
+      "id": "critical-nondamaging-no-draw",
+      "inputs": {"damaging": false, "nonimmune": true, "critical_bonus": 625, "damage_before_critical": null, "sample": null},
+      "expected": {"uncapped_chance": null, "chance": null, "critical": false, "damage_after": null, "rng_draws": 0}
+    },
+    {
+      "id": "critical-immune-no-draw",
+      "inputs": {"damaging": true, "nonimmune": false, "critical_bonus": 625, "damage_before_critical": 23, "sample": null},
+      "expected": {"uncapped_chance": null, "chance": null, "critical": false, "damage_after": 0, "rng_draws": 0}
+    },
+    {
+      "id": "critical-zero-remains-zero",
+      "inputs": {"damaging": true, "nonimmune": true, "critical_bonus": 0, "damage_before_critical": 0, "sample": 0},
+      "expected": {"uncapped_chance": 625, "chance": 625, "critical": true, "damage_after": 0, "rng_draws": 1}
+    }
+  ]
+}

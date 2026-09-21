@@ -143,8 +143,9 @@ class ContentIntegrationTests(unittest.TestCase):
     def test_infrastructure_failure_does_not_accept_content(self):
         for result in [subprocess.CompletedProcess([], 0, b'OK\nextra', b''),
                        subprocess.CompletedProcess([], 0, b'OK\n', b'warning'),
-                       subprocess.CompletedProcess([], 2, b'ERR 9 0 0\n', b''),
-                       subprocess.CompletedProcess([], 2, b'ERR 1 999 0\n', b'')]:
+                       subprocess.CompletedProcess([], 2, b'ERR 1 0 0\n', b''),
+                       subprocess.CompletedProcess([], 2, b'', b'ERR 9 0 0\n'),
+                       subprocess.CompletedProcess([], 2, b'', b'ERR 1 999 0\n')]:
             with patch('content.loader.subprocess.run', return_value=result), self.assertRaises(InfrastructureError):
                 load_project(self.project)
         with patch('content.loader.subprocess.run', side_effect=subprocess.TimeoutExpired('kernel', 15)), self.assertRaises(InfrastructureError):

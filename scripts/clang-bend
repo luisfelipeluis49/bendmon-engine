@@ -1,0 +1,6 @@
+#!/bin/sh
+set -eu
+
+# Bend emits deeply nested C expressions for closed algebraic parsers. Keep the
+# host compiler choice explicit while raising only Clang's parser nesting cap.
+exec clang -fbracket-depth=2048 "$@"

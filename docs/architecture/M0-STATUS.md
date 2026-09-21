@@ -32,4 +32,4 @@ Independent review and corrected findings are recorded in [M0-REVIEW.md](M0-REVI
 
 ## Next slice
 
-Resolve M0 presentation/CI gates and approve the field-level catalog contract for M2. Implement typed IDs, inert versioned documents, strict reference/semantic validation and useful diagnostics before battle code. Do not turn this accumulator or sample scene into an accidental gameplay ruleset.
+Resolve the remaining remote CI and live presentation gates. The balance-independent Content-0 contract, typed IDs, inert versioned documents, strict reference/semantic validation and diagnostics are now implemented; see [M2-STATUS.md](M2-STATUS.md). Numerical timing, damage and RNG rules still gate battle-kernel work.

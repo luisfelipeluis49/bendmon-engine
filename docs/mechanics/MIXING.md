@@ -4,31 +4,31 @@
 
 MIX-1: each source has exactly one type component; 2+ components are forbidden. MIX-2: actor currently knows both sources. MIX-3: pair has an explicit recipe. MIX-4: both sources are engaged and receive increased cooldown. MIX-5: neither source may bypass availability. MIX-6: compatibility symmetric unless explicitly ordered. MIX-7: mix results cannot be sources. MIX-8: results come only from registered recipes.
 
-## Proposed MixRecipe contract
+## MixRecipe contract
 
-Conceptual fields: RecipeId, distinct source BaseMoveIds, closed requirements, validated resulting effect sequence/type components, authored timing/power/accuracy descriptors within the approved catalog policy, and animation AssetId. Recipes may select permitted values, not redefine critical formulas or Harmony curves. Recommend excluding recipe-specific Harmony progression and cooldown multipliers from initial schema: engine registry owns these rules. If variation is needed, expose engine-defined profile IDs only after approval.
+Conceptual fields: RecipeId, distinct source BaseMoveIds, closed requirements, validated resulting effect sequence/type components, authored timing/power/accuracy descriptors within the approved catalog policy, and animation AssetId. Recipes may select permitted values, not redefine critical formulas, Harmony tiers or cooldown multipliers. The engine registry owns those rules.
 
 Use canonical `(min(sourceA,sourceB), max(...))` pair indexing and one recipe per pair. `BaseMoveId` and `RecipeId` are separate identity types. A mix may produce a multi-component result, but that result has no BaseMoveId usable in another recipe. Disallow self-pairs and ordered recipes for MVP (D10); future ordered pairs require explicit schema/ruleset revision, not an interpretation change.
 
-## Eligibility and atomic engagement proposal
+## Eligibility and atomic engagement
 
 In addition to normal battle readiness: the individual has learned this RecipeId; both current moves equal the recipe sources; each source is single-component, available, unreserved, and off cooldown at the current tick; recipe requirements and target constraints hold. Any failure rejects the whole command without RNG/resource changes.
 
-On acceptance reserve both sources and set both increased cooldown deadlines atomically. Recommend `mixedCooldown(source) = ceil(k × ordinaryCooldown(source))`, with k > 1 an owner-approved engine rational and ordinary cooldown >= 1. This is a candidate formula, not a selected k or compiled constant. Failure after acceptance does not release cooldowns; successful execution grants Harmony only under D06's success definition. Store effect output directly in the recipe; never synthesize effects combinatorially.
+On acceptance reserve both sources atomically. At attempted mixed execution, set both deadlines atomically using `mixedCooldown(source) = ceil(3 × ordinaryCooldown(source) / 2)`, with a 5400-tick mixed ceiling. Pre-execution actor cancellation releases both reservations without cooldown; invalid-target fizzle charges both sources. Successful execution grants Harmony only under D06's success definition. Store effect output directly in the recipe; never synthesize effects combinatorially.
 
 ## Observation → training → learned state
 
-Store `observedRecipes` and `learnedRecipes: RecipeId → Harmony` on each persistent MonsterId. Knowing sources does not imply observation; observation does not imply unlock. Recommend an actual valid mix execution emits MixPerformed; an active conscious witness that currently knows both sources records it in battle-local observations. Party-wide learning, fainted observers and own-use witnessing are explicit D09 choices, not assumptions.
+Store `observedRecipes` and `learnedRecipes: RecipeId → Harmony` on each persistent MonsterId. Knowing sources does not imply observation; observation does not imply unlock. At valid mixed execution start, snapshot active conscious combatants that know both sources; allies and enemies qualify. Those witnesses record the execution even on a miss or same-action KO, but cancellation/fizzle produces no observation.
 
-At battle finalization merge witnessed RecipeIds idempotently to persistent state, including defeat under the recommended policy. Post-battle Training is a separate world transaction requiring that individual's observation, both current sources, valid compatibility and not already learned. Training cannot occur mid-battle. Whether it costs resources is unresolved.
+At every committed terminal battle result, including defeat and escape, merge witnessed RecipeIds idempotently to persistent state. Post-battle training is a designated-trainer world transaction requiring that individual's observation, both current sources, valid compatibility, one bounded training token and an unlearned recipe. Training cannot occur mid-battle.
 
-Recommend observations and learned Harmony persist when a source is forgotten; execution remains locked until both are known again. Species/evolution changes preserve individual identity and must revalidate current moves. Content removal/migration must never silently map a recipe to a different pair. Persistence and end-of-battle outcomes require D09/D17 approval.
+Observations, unlock and Harmony persist when a source is forgotten; execution remains locked until both are known again. Species/evolution changes preserve individual identity and must revalidate current moves. Content removal/migration must never silently map a recipe to a different pair. Exact ruleset and project identity follow D17.
 
-## Harmony proposal — no hard-coded curve
+## Harmony mastery tiers
 
-Harmony is per individual and learned recipe. Proposed representation: bounded nonnegative integer h, with engine maximum H. Candidate successful-use update: `h' = min(H, h + g)` using checked or proof-safe saturating addition, g a positive engine value. Candidate accuracy bonus: `floor(A × h/H)`; candidate critical bonus: `floor(C × h/H)`, each capped by the engine probability ceiling. Require H > 0 and legal A/C bounds. Alternatives: tiered thresholds or a monotone diminishing-returns table. Recommend the linear bounded form for first testing because its monotonicity and limits are simple to audit; balance still needs playtests.
+Harmony is per individual and learned recipe. Store successful-use progress in 0–40. Derive tiers and `(accuracyBonus, criticalBonus)` packages as: Novice 0 `(0,0)`, Familiar 5 `(100,125)`, Practiced 10 `(200,250)`, Expert 20 `(300,375)`, Master 30 `(400,500)` and Perfected 40 `(500,625)`. Probability units use the 0–10000 scale and ordinary critical chance still clamps at 2500. Harmony grants no other stat benefit initially.
 
-H, g, A, C, initial learned value and probability scale are all TBD; these are DESIGN DECISIONS D06. Recommend successful use means a valid execution producing at least one intended gameplay effect; miss, immunity-only, cancellation and fizzle grant no progress. Award once per action, not per hit, component or target. Recommend no other Harmony stat bonuses initially. Reusing an event ID must not award twice. None of these proposed meanings is an approved rule yet.
+A successful use is a valid mixed execution producing at least one intended gameplay effect. Miss, protection/immunity blocking every effect, healing at full HP, cancellation and fizzle grant no progress. Award at most once per action, not per hit, component or target. Reusing an event ID must not award twice. Commit progress with the action; later loss or escape does not erase it.
 
 ## Obligations
 

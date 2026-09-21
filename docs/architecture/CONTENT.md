@@ -24,8 +24,9 @@ Catalog schemas and project schemas are versioned independently. Draft version l
 | Species/moves/items/recipes | propose permitted authored attributes, legal compositions and references | legal fields/ranges, formulas, primitive semantics, caps, mix restrictions |
 | Type/ability/status | labels/assets and approved references initially | type registry/chart and behavior algebra; additions are engine releases |
 | Harmony/XP/capture/damage | none through project files | all curves, probability rules, coefficients and compatibility changes |
+| Capacity tiers | finite monotone tiers and unlock events within published bounds; defaults are 6/4/1000/999/512/9999999 | hard safety ceilings, atomic transaction semantics and save validity |
 
-This matrix is D15, not an authorization to ship an arbitrary balance DSL. Move power/windup/base stats are authored balance inputs only if approved; bounds are engine-owned. Recipe fields cannot override mixing restrictions or global progression.
+This matrix is D15, not an authorization to ship an arbitrary balance DSL. D13 capacity tiers are the sole explicit creator-authority exception for the listed capacity values. Move power/windup/base stats are authored balance inputs only if approved; bounds are engine-owned. Recipe fields cannot override mixing restrictions or global progression.
 
 ## Validator stages
 
@@ -39,9 +40,9 @@ This matrix is D15, not an authorization to ship an arbitrary balance DSL. Move 
 
 ## Event machine
 
-Propose closed ShowDialogue, MoveActor, Wait, GiveItem, RemoveItem, StartBattle, SetFlag, ClearFlag, CheckFlag, Branch, Teleport, PlayAnimation, PlaySound, StartQuest, CompleteQuest, ChangeEncounterTable, ChangeNPCState and OpenShop tags. Predicates reference typed flags/quest states, not arbitrary expressions. Nodes serialize as IDs and typed operands.
+Use closed ShowDialogue, MoveActor, Wait, GiveItem, RemoveItem, StartBattle, SetFlag, ClearFlag, CheckFlag, Branch, Teleport, PlayAnimation, PlaySound, StartQuest, CompleteQuest, ChangeEncounterTable, ChangeNPCState and OpenShop tags. Predicates reference typed flags/quest states, not arbitrary expressions. Nodes serialize as IDs and typed operands.
 
-Recommend acyclic immediate execution within each activation; persistent quest/NPC state machines may revisit nodes across activations. Wait yields on logical time; UI/dialogue choices yield a typed command. Bound total steps per activation across yields, nesting, fan-out, queued activations and allocations. Reject recursive graph calls. Presentation completion must not decide gameplay: PlayAnimation/PlaySound emit visual events; gameplay waits have engine logical durations. Full semantics for every admitted opcode are required before schema enablement.
+Immediate execution reachable within one activation is acyclic; persistent quest/NPC state machines may revisit nodes across activations. Wait yields on logical time; UI/dialogue choices yield a typed command. Bound cumulative work across yields, nesting, fan-out, queued activations and allocations. Reject recursive graph calls. Presentation completion must not decide gameplay: PlayAnimation/PlaySound emit visual events; gameplay waits have engine logical durations. Full semantics for every admitted opcode are required before schema enablement.
 
 ## Assets and hostile input
 

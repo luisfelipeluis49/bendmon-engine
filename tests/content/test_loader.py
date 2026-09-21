@@ -34,7 +34,8 @@ def make_project(root: Path) -> Path:
 
 def make_kernel(root: Path, output: str = "OK\n", status: int = 0) -> Path:
     kernel = root / "kernel"
-    kernel.write_text("#!/usr/bin/env python3\nimport pathlib,sys\nassert sys.argv[1]=='--' and len(sys.argv)==3\np=pathlib.Path(sys.argv[2])\nassert p.is_absolute()\nassert p.read_text().split()[0]=='1'\nsys.stdout.write(" + repr(output) + ")\nsys.exit(" + str(status) + ")\n", encoding="utf-8")
+    stream = "sys.stdout" if status == 0 else "sys.stderr"
+    kernel.write_text("#!/usr/bin/env python3\nimport pathlib,sys\nassert sys.argv[1]=='--' and len(sys.argv)==3\np=pathlib.Path(sys.argv[2])\nassert p.is_absolute()\nassert p.read_text().split()[0]=='1'\n" + stream + ".write(" + repr(output) + ")\nsys.exit(" + str(status) + ")\n", encoding="utf-8")
     kernel.chmod(kernel.stat().st_mode | stat.S_IXUSR)
     return kernel
 
@@ -87,6 +88,14 @@ class LoaderTests(unittest.TestCase):
             load_project(self.root, self.kernel)
         self.assertEqual(caught.exception.diagnostics[0].pointer, "/width")
 
+    def test_unknown_key_uses_a_valid_json_pointer(self) -> None:
+        doc = json.loads((self.root / "project.json").read_text())
+        doc["a/b~c"] = 1
+        write_json(self.root / "project.json", doc)
+        with self.assertRaises(ContentError) as caught:
+            load_project(self.root, self.kernel)
+        self.assertEqual(caught.exception.diagnostics[0].pointer, "/a~1b~0c")
+
     def test_symlink_and_hardlink_rejected(self) -> None:
         source = self.root / "data/map.json"
         target = self.root / "data/real.json"
@@ -136,25 +145,15 @@ class LoaderTests(unittest.TestCase):
             load_project(self.root, bad)
 
     def test_cli_exit_codes_and_json(self) -> None:
-        build = ROOT / "build"
-        build.mkdir(exist_ok=True)
-        installed = build / "content-kernel"
-        previous = installed.read_bytes() if installed.exists() else None
-        previous_mode = installed.stat().st_mode if installed.exists() else None
-        try:
-            installed.write_bytes(self.kernel.read_bytes()); installed.chmod(0o700)
-            result = subprocess.run([sys.executable, ROOT / "scripts/validate_project.py", self.root], capture_output=True, text=True, timeout=10)
-            self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertTrue(json.loads(result.stdout)["ok"])
-            (self.root / "project.json").write_text("{}", encoding="utf-8")
-            result = subprocess.run([sys.executable, ROOT / "scripts/validate_project.py", self.root], capture_output=True, text=True, timeout=10)
-            self.assertEqual(result.returncode, 2, result.stderr)
-            self.assertFalse(json.loads(result.stdout)["ok"])
-        finally:
-            if previous is None:
-                installed.unlink(missing_ok=True)
-            else:
-                installed.write_bytes(previous); installed.chmod(previous_mode or 0o700)
+        installed = ROOT / "build/content-kernel"
+        self.assertTrue(installed.is_file(), "build the native content kernel first")
+        result = subprocess.run([sys.executable, ROOT / "scripts/validate_project.py", self.root], capture_output=True, text=True, timeout=10)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue(json.loads(result.stdout)["ok"])
+        (self.root / "project.json").write_text("{}", encoding="utf-8")
+        result = subprocess.run([sys.executable, ROOT / "scripts/validate_project.py", self.root], capture_output=True, text=True, timeout=10)
+        self.assertEqual(result.returncode, 2, result.stderr)
+        self.assertFalse(json.loads(result.stdout)["ok"])
 
 
 if __name__ == "__main__":

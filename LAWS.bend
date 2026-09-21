@@ -16,3 +16,25 @@ law bootstrap_zero:
 law content_empty_reference:
   for id: Nat
   {Content.ref_ok(id, 0n) == False{} : Bool}
+
+
+# Approved future proof obligations (2026-09-21 decision packet):
+#
+# MIX-CD: ceil(3*c/2) strictly exceeds every legal ordinary cooldown c and
+# charging both source deadlines is atomic.
+# HARM-TIER: the six mastery thresholds and accuracy/critical packages are
+# monotone and remain within the ordinary probability caps.
+# MIX-ALLOC: quotient/remainder allocation over 1..4 distinct TypeIds preserves
+# the complete base power budget before component modifiers.
+# CAP-ATOMIC: capture, inventory, shop and capacity-tier transitions either
+# commit their entire validated result or leave state unchanged.
+# WORLD-DET: equal accepted fixed-point movement inputs and RNG state produce
+# equal swept positions and encounter thresholds independent of rendered frames.
+# EVENT-TERM: one immediate event activation is acyclic and bounded by cumulative
+# fuel; persistent repetition crosses an activation boundary.
+# SAVE-ID: a save/replay loads only under exact ruleset and project-content
+# identity unless an explicit version-specific schema migration succeeds.
+#
+# These owner-approved obligations are recorded here before their M4–M11 domain
+# functions exist. Replace each comment with a checked law and proof alongside
+# its implementation; do not weaken the obligation to make a proof pass.

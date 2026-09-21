@@ -94,13 +94,33 @@ def validate.entry(entry_map: Nat, map_count: Nat) -> Model.Validation:
   choose(ref_ok(entry_map, map_count), Model.Valid{},
     Model.Invalid{6n, 0n, 0n})
 
+def validate.maps_and_entry(
+  maps: List<&2, Model.MapRecord>, +encounter_count: Nat,
+  +entry_map: Nat, +map_count: Nat
+) -> Model.Validation:
+  maps_result entry_result =
+    validate_maps(maps, encounter_count, 0n)
+    validate.entry(entry_map, map_count)
+  first(maps_result, entry_result)
+
+def validate.rest(
+  encounters: List<&2, Model.Encounter>, +species_count: Nat,
+  maps: List<&2, Model.MapRecord>, +encounter_count: Nat,
+  +entry_map: Nat, +map_count: Nat
+) -> Model.Validation:
+  encounters_result maps_result =
+    validate_encounters(encounters, species_count, 0n)
+    validate.maps_and_entry(maps, encounter_count, entry_map, map_count)
+  first(encounters_result, maps_result)
+
 def validate(+content: Model.Content) -> Model.Validation:
   Model.Content{+asset_count, +species, +encounters, +maps,
     Model.MapId{+entry_map}} = content
   +species_count = List.length(&2, Model.Species, species)
   +encounter_count = List.length(&2, Model.Encounter, encounters)
   +map_count = List.length(&2, Model.MapRecord, maps)
-  first(validate_species(species, asset_count, 0n),
-    first(validate_encounters(encounters, species_count, 0n),
-      first(validate_maps(maps, encounter_count, 0n),
-        validate.entry(entry_map, map_count))))
+  species_result rest_result =
+    validate_species(species, asset_count, 0n)
+    validate.rest(encounters, species_count, maps, encounter_count,
+      entry_map, map_count)
+  first(species_result, rest_result)

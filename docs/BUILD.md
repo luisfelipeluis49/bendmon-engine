@@ -20,7 +20,8 @@ python3 scripts/verify.py
 
 The verifier checks the canonical proof, intentionally failing proof fixtures,
 source checks, native and JavaScript headless behavior, CPU parallel behavior,
-and the presentation boundary. It writes the machine-readable summary and
+the presentation boundary, and the native Content-0 kernel plus hostile loader
+tests. It writes the machine-readable summary and
 presentation evidence under `build/evidence/`. The generated files are local
 build outputs and are ignored by Git.
 
@@ -31,6 +32,16 @@ developer-facing smoke test is:
 ./build/headless -- 1 2 3
 # 6
 ```
+
+The verifier also builds `build/content-kernel`. Use the supported Python shell
+to validate projects; its JSON result is suitable for editor and CI adapters:
+
+```sh
+python3 scripts/validate_project.py examples/original-demo
+```
+
+The native kernel's wire format is an internal trusted boundary documented in
+`docs/schemas/CONTENT-0.md`; project authors do not invoke or generate it.
 
 The native binary can be copied and run from a clean directory without the Bend compiler on this host; it still depends on compatible system libraries. Compilation itself requires the
 workspace-pinned Bend release and clang; runtime execution is CPU-only for this
@@ -45,4 +56,6 @@ playback was available.
 GitHub Actions repeats this flow on `ubuntu-24.04`, installs clang, selects
 Node.js 20, runs the Python verifier, and uploads `build/evidence/` even when a
 check fails. A remote GitHub Actions run has not been claimed by this local
-work order.
+work order. Bend's generated C for the closed Content-0 parser is deeply nested,
+so `scripts/bend` selects `scripts/clang-bend`, which raises Clang's parser
+bracket-depth limit while preserving the pinned Bend compiler and normal flags.

@@ -1,6 +1,6 @@
 # Candidate semantic law catalog and proof boundary
 
-Status: gameplay entries below remain human-readable candidates, not checked Bend claims. The initial M0 BOOT-1 bootstrap law now exists in `LAWS.bend`; `PROOF.bend` proves that adding zero preserves the actual headless accumulator transition for every Nat state. The pinned compiler checks it. This does not prove any gameplay entry below; no existing law was removed or weakened.
+Status: gameplay entries below remain human-readable candidates, not checked Bend claims. BOOT-1 and the additive REF-EMPTY content lemma now exist in `LAWS.bend`; `PROOF.bend` proves both against production helpers with the pinned compiler. REF-EMPTY proves only that no natural index resolves into a zero-length catalog. It does not prove parsing, filesystem containment, full reference resolution or any gameplay entry below; no existing law was removed or weakened.
 
 ## Law inventory
 
@@ -50,3 +50,5 @@ A model using unbounded naturals does not prove the optimized fixed-width implem
 Astra drafts exact candidate law with requirement ID, assumptions, implementation target and expected counterexample. Human approves its semantics before adoption to `LAWS.bend`; Sol supplies `PROOF.bend`. A separate reviewer checks for vacuous premises, impossible ValidState predicates, omitted transitions, erased/unsafe escapes, disconnected toy functions and uncovered approved laws. Include positive witnesses showing legal mixes/training/battle transitions remain possible, alongside negative cases.
 
 Canonical gate is `bend PROOF.bend` on the pinned toolchain plus compilation/checking of every changed entry point. In M0 demonstrate the gate fails for an intentionally false or unproved law in an isolated fixture, and that the real proof entry imports the actual law file. Hash/compare the approved law file in review; any semantic change requires explicit owner approval. No proposed exception may be introduced merely to fix a failing implementation.
+
+Current content proof coverage: `REF-EMPTY` calls `engine/content/validation.bend::ref_ok` and establishes `ref_ok(id, 0) == False` for every natural ID. The remaining REF-1 obligations are exercised by native and shell tests and remain future proof work.

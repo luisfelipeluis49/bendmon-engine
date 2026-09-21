@@ -2,11 +2,11 @@ import Base
 import ../../engine/content/model.bend as Model
 import ../../engine/content/wire.bend as Wire
 
-def show(result: Result<&2, &2, String, Model.Content>) -> String:
+def show(result: Wire.WireResult) -> String:
   match result:
-    case Fail{reason}:
+    case Wire.WireFail{reason}:
       "WIRE " ++ reason
-    case Done{content}:
+    case Wire.WireDone{content}:
       "OK"
 
 def main() -> String:

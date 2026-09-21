@@ -1,6 +1,6 @@
 # Monster RPG Maker — architecture plan
 
-Status: implementation authorized after planning review. M0 local foundation is implemented; remote CI/live device gates remain pending. M1 and later milestones are not complete. Fixed requirements come from the brief; approved choices and remaining proposals are recorded in `docs/DECISIONS.md`. See `docs/architecture/M0-STATUS.md` for current evidence.
+Status: implementation authorized after planning review. M0 local foundation is implemented; remote CI/live device gates remain pending. The balance-independent M2 Content-0 slice is implemented and locally verified. On 2026-09-21 the owner approved every remaining recommended decision, including the R01–R13 and U01–U13 closures. No currently identified owner-choice blocker remains; future changes use explicit ruleset versioning. Fixed requirements and approved defaults are recorded in `docs/DECISIONS.md`. See `docs/architecture/M0-STATUS.md` and `docs/architecture/M2-STATUS.md` for current evidence.
 
 ## Objective and sequence
 
@@ -10,7 +10,7 @@ Build one content-agnostic, primarily Bend 2 engine with a deterministic headles
 |---|---|---|---|---|
 | M0 Bootstrap / feasibility | Pinned Bend 2, guide audit, trivial law/proof, headless binary, CI, graphics/audio and host-call spikes | Owner identifies intended toolchain; work order approval | Sol; Luna CI/docs | Astra reviews toolchain/FFI; proof passes locally and in CI; platform matrix records evidence |
 | M1 Architecture / formal domain | Approved domain/contracts, candidate laws, decision resolutions | This package; M0 feasibility before representation freeze | Astra specifications; Sol proof prototypes | Separate Astra review plus owner approval; no outstanding blocker for next slice |
-| M2 Content kernel | IDs, strict parser/validator, manifests, catalogs, reference resolution, useful diagnostics | M0, M1; content permissions/limits approved | Sol; Luna schema fixtures under fixed contract | Sol reviews Luna; independent reviewer tests hostile input; Astra schema review |
+| M2 Content kernel | **Implemented locally:** typed IDs, strict bounded parser/validator, manifests, catalogs, reference resolution, canonical identity and useful diagnostics | Balance-independent contract fixed; later schema families remain additive work | Sol; Luna schema fixtures under fixed contract | 102-check repository gate plus hostile-input suite; separate Sol/Astra review recorded in M2 status |
 | M3 Headless battle | State, scheduler, targeting, readiness, cooldown, RNG, completion, deterministic baseline AI, replay harness, minimal approved damage operation | M2; timing, damage and RNG decisions approved | Sol | Astra semantics review; repeated command logs yield equal canonical states |
 | M4 Effect algebra | Closed typed effect interpreter and representative physical/special/status/heal/buff/conditional moves | M3; stacking/failure semantics approved | Sol; Luna fixtures | Independent Sol review; law gate and effect-order golden tests |
 | M5 Multi-type attacks | Generic nonempty component list, split allocation and independent modifiers | M4; rounding/STAB/damage decisions approved | Sol | Astra review; 1/2/3+ component examples and allocation laws |
@@ -59,7 +59,7 @@ M0 precedes proof-dependent domain commitment. M1 drafting happens now; approval
 
 Workspace: `/home/luis/bend`, Linux x86_64. Only `AGENTS.md` existed before this package. `bend --version` and `bend guide` both returned command-not-found (exit 127). No `.bend` source or installed guide was found in the inspected locations. `git status` reports this is not a usable Git repository despite a read-only `.git` directory. No repository initialization, compiler installation, Bend source, executable schema, or engine was created.
 
-The missing-compiler condition above was resolved during implementation. Read `docs/architecture/M0-STATUS.md` for verified local results and remaining gates. Continue with typed IDs and strict content validation after their contracts are approved. Do not start with renderer/editor scaffolding that assumes a working Bend host API.
+The missing-compiler condition above was resolved during implementation. Read `docs/architecture/M0-STATUS.md` for verified local results and remaining gates. Typed IDs and strict inert Content-0 validation are now implemented; read `docs/architecture/M2-STATUS.md`. The next gameplay milestone still depends on approved numerical timing, damage and RNG rules.
 
 ## Completion policy
 

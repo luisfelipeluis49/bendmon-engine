@@ -11,3 +11,27 @@ def Laws.bootstrap_zero(n):
 
 def Laws.content_empty_reference(id):
   {==}
+
+def Laws.battle_wait_choices():
+  {==}
+
+def Laws.rng_reference_step():
+  {==}
+
+def Laws.combat_reference_damage():
+  {==}
+
+def Laws.combat_reference_accuracy():
+  {==}
+
+def Laws.battle_clock_cap():
+  {==}
+
+def Laws.escape_reference_chance():
+  {==}
+
+def Laws.source_duplicate_rejected():
+  {==}
+
+def Laws.battle_driver_deterministic(fuel, state):
+  {==}

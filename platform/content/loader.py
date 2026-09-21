@@ -136,12 +136,16 @@ def _decode(raw: bytes, file: str) -> Any:
     return value
 
 
+def _pointer_token(value: str) -> str:
+    return value.replace("~", "~0").replace("/", "~1")
+
+
 def _object(value: Any, required: set[str], file: str, pointer: str) -> dict[str, Any]:
     if not isinstance(value, dict):
         _fail("shape", file, pointer, "expected object")
     unknown, missing = set(value) - required, required - set(value)
     if unknown:
-        _fail("unknown-field", file, pointer + "/" + sorted(unknown)[0], "unknown field")
+        _fail("unknown-field", file, pointer + "/" + _pointer_token(sorted(unknown)[0]), "unknown field")
     if missing:
         _fail("missing-field", file, pointer, "missing field " + sorted(missing)[0])
     return value
@@ -274,13 +278,18 @@ def _kernel(tokens: list[int], kernel_path: os.PathLike[str] | str,
         raise InfrastructureError(f"content kernel unavailable: {exc}") from None
     try:
         stdout = result.stdout.decode("ascii", "strict")
+        stderr = result.stderr.decode("ascii", "strict")
     except UnicodeDecodeError:
         raise InfrastructureError("content kernel emitted non-ASCII output") from None
-    if result.returncode == 0 and stdout == "OK\n" and not result.stderr:
+    if result.returncode == 0 and stdout == "OK\n" and not stderr:
         return
-    if result.returncode == 0 or result.stderr or stdout.startswith("WIRE "):
+    if result.returncode == 0 or stdout:
         raise InfrastructureError("content kernel protocol failure")
-    lines = stdout.splitlines(keepends=True)
+    if stderr.startswith("WIRE "):
+        if not re.fullmatch(r"WIRE [ -~]+\n", stderr):
+            raise InfrastructureError("content kernel emitted malformed wire failure")
+        raise InfrastructureError("content kernel rejected trusted wire input")
+    lines = stderr.splitlines(keepends=True)
     diagnostics: list[Diagnostic] = []
     messages = {1: "species sprite does not resolve", 2: "encounter species does not resolve",
                 3: "encounter level must be 1..200", 4: "map dimensions must be 1..512",

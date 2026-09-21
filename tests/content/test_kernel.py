@@ -75,6 +75,7 @@ class NativeContentTests(unittest.TestCase):
 
     def test_wire_resource_ceiling(self):
         self.bad(b' ' * (2 * 1024 * 1024 + 1), 'WIRE')
+        self.bad('é'.encode() * 1_100_000, 'WIRE file-size')
         self.bad(('0 ' * 140001), 'WIRE')
 
     def test_generated_valid_inputs_and_parallel_order(self):
@@ -98,6 +99,8 @@ class NativeContentTests(unittest.TestCase):
         result = subprocess.run([str(KERNEL), '--', '/nonexistent-bend-content-input'],
                                 capture_output=True, text=True, timeout=15)
         self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(result.stdout, '')
+        self.assertEqual(result.stderr, 'WIRE open\n')
 
 
 if __name__ == '__main__':

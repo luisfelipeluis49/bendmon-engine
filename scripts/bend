@@ -19,4 +19,7 @@ fi
 # Disable the optional daily update check so local builds are deterministic
 # and never require network access.
 export BEND_NO_TELEMETRY=1
+if [ -z "${CC:-}" ]; then
+  export CC="$workspace/scripts/clang-bend"
+fi
 exec "$bend" "$@"

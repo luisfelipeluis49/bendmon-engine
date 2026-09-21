@@ -1,6 +1,6 @@
 # Content-0 kernel contract
 
-Development schema, implemented for the owner's next-part request. This is an inert content loading slice, not approval of battle parameters, encounter sampling or world movement. Fields outside this contract reject. Move/item/effect/recipe editing awaits its dedicated schema; D15 balance permissions remain open.
+Development schema, implemented for the owner's next-part request. This remains an inert content loading slice even though later battle, encounter and world structures are now approved. Fields outside this contract reject. Move/item/effect/recipe/capacity-tier editing awaits additive schemas under approved D13–D16 authority.
 
 ## Documents
 
@@ -40,8 +40,8 @@ Maximum tokens 140000; to avoid OS argv limits the shell writes ASCII space-sepa
 
 Core structs: Content(assetCount, species asset refs, encounter entry lists, map records, entryMap). Validation checks every reference against its kind's count, level 1..200, dimensions 1..512, and entryMap. All sources, even wire input without the Python shell, must undergo core semantic validation. Independent species/encounter/map checks may run as balanced parallel calls; merge results in fixed order.
 
-Native stdout is exactly `OK\n` on success, or one diagnostic per line:
-`ERR <code> <record> <item>\n` with nonzero exit for invalid content. Codes: 1 species sprite ref, 2 encounter species ref, 3 encounter level, 4 map dimensions, 5 map encounter ref, 6 project entryMap. Record is zero-based canonical species/encounter/map index; item is entry/reference index where relevant, otherwise 0. Code 6 is project-level and always uses record=0,item=0. Bad wire input uses `WIRE <reason>\n` and nonzero exit, not an accepted content result. Diagnostics may stop at first error per independent category; no requirement to enumerate every error. Shell maps diagnostics to stable original file+JSON pointer+entity ID and actionable messages.
+Native stdout is exactly `OK\n` on success and stderr is empty. Invalid content emits one diagnostic per line on stderr:
+`ERR <code> <record> <item>\n` with nonzero exit and empty stdout. Codes: 1 species sprite ref, 2 encounter species ref, 3 encounter level, 4 map dimensions, 5 map encounter ref, 6 project entryMap. Record is zero-based canonical species/encounter/map index; item is entry/reference index where relevant, otherwise 0. Code 6 is project-level and always uses record=0,item=0. Bad wire input uses `WIRE <reason>\n` on stderr and nonzero exit, not an accepted content result. Diagnostics may stop at first error per independent category; no requirement to enumerate every error. Shell maps diagnostics to stable original file+JSON pointer+entity ID and actionable messages.
 
 ## Shell API and CLI
 

@@ -8,3 +8,6 @@ def Laws.bootstrap_zero(n):
     case 1n+p:
       %Laws.bootstrap_zero(p) : {1n+Nat.add(p, 0n) == 1n+_ : Nat}
       {==}
+
+def Laws.content_empty_reference(id):
+  {==}

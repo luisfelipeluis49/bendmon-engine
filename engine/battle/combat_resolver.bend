@@ -23,7 +23,7 @@ type CombatOutcome is Data:
 type CombatResolution is Data:
   CombatResolved{rng: Rng.RngState, outcome: CombatOutcome}
   CombatInvalid{rng: Rng.RngState}
-  CombatRngFault{rng: Rng.RngState}
+  CombatRngFault{rng: Rng.RngState, reason: Rng.RngSampleResult}
 
 type NonCriticalKind is Data:
   NonDamaging{}
@@ -64,8 +64,8 @@ def critical_sample(
       CombatResolved{next_rng, finish_damage(
         choose_damage(is_critical, normal, critical_damage), is_critical,
         draw, accuracy_candidates, critical_candidates)}
-    case _:
-      CombatRngFault{original}
+    case +reason:
+      CombatRngFault{original, reason}
 
 def run_critical(
   +original: Rng.RngState, current: Rng.RngState, +normal: U32,
@@ -95,8 +95,8 @@ def accuracy_draw(
     case Rng.RngSampled{+next_rng, +draw, candidates}:
       accuracy_hit(U32.is_lt(draw, chance), original, next_rng, draw,
         candidates, normal, critical_damage, critical_bonus)
-    case _:
-      CombatRngFault{original}
+    case +reason:
+      CombatRngFault{original, reason}
 
 def resolve_accuracy(
   accuracy: Math.AccuracyResult, +original: Rng.RngState,
@@ -160,8 +160,8 @@ def noncritical_sample(
     case Rng.RngSampled{+next_rng, +draw, candidates}:
       noncritical_draw_hit(U32.is_lt(draw, chance), kind, original, next_rng,
         draw, candidates)
-    case _:
-      CombatRngFault{original}
+    case +reason:
+      CombatRngFault{original, reason}
 
 def resolve_noncritical_accuracy(
   accuracy: Math.AccuracyResult, kind: NonCriticalKind,

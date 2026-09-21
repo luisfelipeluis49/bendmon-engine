@@ -14,18 +14,18 @@ BEND = ROOT / "scripts" / "bend"
 NODE = shutil.which("node")
 
 GOLDENS = (
-    (ROOT / "tests/replay/fold_test.bend", "[1n, 1n, 1n]\n"),
     (ROOT / "tests/battle/scheduler_test.bend", "[1n, 1n, 1n, 1n]\n"),
     (ROOT / "tests/battle/reducer_test.bend", "[1n, 1n, 1n, 1n]\n"),
-    (ROOT / "tests/battle/rng_test.bend", "[1n, 1n, 1n, 1n]\n"),
+    (ROOT / "tests/battle/rng_test.bend", "[1n, 1n, 1n, 1n, 1n]\n"),
     (ROOT / "tests/battle/combat_math_test.bend", "[1n, 1n, 1n, 1n, 1n, 1n]\n"),
-    (ROOT / "tests/battle/combat_resolver_test.bend", "[1n, 1n, 1n, 1n, 1n, 1n]\n"),
+    (ROOT / "tests/battle/combat_resolver_test.bend", "[1n, 1n, 1n, 1n, 1n, 1n, 1n]\n"),
     (ROOT / "tests/battle/roster_test.bend", "[1n, 1n, 1n, 5000n, 1000n, 9500n]\n"),
     (ROOT / "tests/battle/participants_test.bend", "[1n, 1n, 1n]\n"),
     (ROOT / "tests/battle/sources_test.bend", "[1n, 1n, 1n, 1n]\n"),
     (ROOT / "tests/battle/driver_test.bend", "[1n, 1n, 1n]\n"),
-    (ROOT / "tests/battle/runtime_test.bend", "[1n, 1n, 1n, 1n, 1n, 1n]\n"),
-    (ROOT / "tests/replay/fold_test.bend", "[1n, 1n, 1n]\n"),
+    (ROOT / "tests/battle/runtime_test.bend", "[1n, 1n, 1n, 1n, 1n, 1n, 1n, 1n, 1n, 1n, 1n, 1n, 1n, 1n, 1n, 1n, 1n, 1n, 1n, 1n]\n"),
+    (ROOT / "tests/replay/fold_test.bend", "[1n, 1n, 1n, 1n]\n"),
+    (ROOT / "tests/replay/runtime_fold_test.bend", "[1n, 1n, 1n]\n"),
 )
 
 
@@ -48,7 +48,10 @@ class CrossTargetBattleGoldenTests(unittest.TestCase):
                 self._compile(source, javascript)
 
                 native_output = self._run((native,))
-                javascript_output = self._run((NODE, javascript))
+                # The combined golden entry expands many independent Bend
+                # checks into one generated module; give Node enough test
+                # harness stack without changing gameplay execution.
+                javascript_output = self._run((NODE, "--stack-size=8192", javascript))
                 self.assertEqual(native_output, expected, source.name)
                 self.assertEqual(javascript_output, expected, source.name)
                 self.assertEqual(native_output, javascript_output, source.name)

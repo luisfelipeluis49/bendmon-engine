@@ -8,6 +8,9 @@ import ./engine/battle/combat_math.bend as CombatMath
 import ./engine/battle/roster.bend as Roster
 import ./engine/battle/sources.bend as Sources
 import ./engine/battle/driver.bend as Driver
+import ./engine/battle/reducer.bend as Reducer
+import ./engine/battle/participants.bend as Participants
+import ./engine/battle/runtime.bend as Runtime
 
 # BOOT-1: adding zero preserves the headless accumulator for every Nat state.
 # This is a toolchain/bootstrap law, not a battle or progression specification.
@@ -81,6 +84,37 @@ law battle_driver_deterministic:
   for fuel: Nat
   for state: BattleModel.BattleState
   {Driver.run(state, fuel) == Driver.run(state, fuel) : Driver.DriveResult}
+
+
+# HP-SAT: damage beyond current HP saturates at zero and marks Defeated.
+law battle_hp_saturation:
+  {Reducer.damage_actor(BattleModel.ActorId{0n}, 10n,
+      [BattleModel.Actor{BattleModel.ActorId{0n}, BattleModel.Player{}, 3n,
+        100n, BattleModel.Ready{}, 0}]) ==
+    [BattleModel.Actor{BattleModel.ActorId{0n}, BattleModel.Player{}, 0n,
+      100n, BattleModel.Defeated{}, 0}] : List<&2, BattleModel.Actor>}
+
+
+# REINFORCE: the first queued viable participant fills a vacant active slot.
+law battle_reinforcement_order:
+  {Participants.fill_reinforcements(
+      [BattleModel.Actor{BattleModel.ActorId{0n}, BattleModel.Player{}, 10n,
+        100n, BattleModel.Ready{}, 0},
+       BattleModel.Actor{BattleModel.ActorId{1n}, BattleModel.Player{}, 10n,
+        90n, BattleModel.Benched{}, 0}]) ==
+    [BattleModel.Actor{BattleModel.ActorId{0n}, BattleModel.Player{}, 10n,
+      100n, BattleModel.Ready{}, 0},
+     BattleModel.Actor{BattleModel.ActorId{1n}, BattleModel.Player{}, 10n,
+      90n, BattleModel.Ready{}, 0}] : List<&2, BattleModel.Actor>}
+
+
+# RUNTIME-DET: the reducer-owned RNG runtime is deterministic for complete
+# canonical state and bounded fuel.
+law battle_runtime_deterministic:
+  for fuel: Nat
+  for state: Runtime.RuntimeState
+  {Runtime.runtime_run(fuel, state) == Runtime.runtime_run(fuel, state)
+    : Runtime.RuntimeRunResult}
 
 
 # Approved future proof obligations (2026-09-21 decision packet):

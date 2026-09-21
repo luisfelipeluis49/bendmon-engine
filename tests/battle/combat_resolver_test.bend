@@ -50,6 +50,14 @@ def immune_code(result: Combat.CombatResolution) -> Nat:
     case _:
       0n
 
+def exhausted_code(result: Combat.CombatResolution) -> Nat:
+  match result:
+    case Combat.CombatRngFault{Rng.RngState{1, 2, 3, 4},
+        Rng.RngSamplingExhausted{Rng.RngState{1, 2, 3, 4}, 64n}}:
+      1n
+    case _:
+      0n
+
 def main() -> List<&2, Nat>:
   +seed = {Rng.RngState{1, 2, 3, 4} : Rng.RngState}
   [miss_code(Combat.resolve(seed, Math.OrdinaryAccuracy{500},
@@ -63,6 +71,8 @@ def main() -> List<&2, Nat>:
    effect_code(Combat.resolve_noncritical(seed, Combat.NonDamaging{},
       Math.AlwaysHit{}, Math.StageNeutral{}, Math.StageNeutral{})),
    immune_code(Combat.resolve_noncritical(seed, Combat.DeterministicImmune{},
-      Math.OrdinaryAccuracy{10000}, Math.StageNeutral{}, Math.StageNeutral{}))]
+      Math.OrdinaryAccuracy{10000}, Math.StageNeutral{}, Math.StageNeutral{})),
+   exhausted_code(Combat.critical_sample(
+      Rng.RngSamplingExhausted{seed, 64n}, seed, 50, 100, 625, 0n))]
 
-#| [1, 1, 1, 1, 1, 1]
+#| [1, 1, 1, 1, 1, 1, 1]

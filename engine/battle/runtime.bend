@@ -41,6 +41,8 @@ type DefenderSnapshot is Data:
 type EncounterKind is Data:
   WildEncounter{}
   TrainerEncounter{}
+  BossEncounter{}
+  LockedEncounter{}
 
 type QueuedReservation is Data:
   QueuedMove{
@@ -82,7 +84,7 @@ type RuntimeCommand is Data:
   }
   RuntimeWait{source: Model.ActorId}
   RuntimeSwitch{source: Model.ActorId, incoming: Model.ActorId}
-  RuntimeEscape{source: Model.ActorId, player_speed: U32, enemy_speed: U32}
+  RuntimeEscape{source: Model.ActorId}
 
 def RuntimeCommand.actor(command: RuntimeCommand) -> Model.ActorId:
   match command:
@@ -93,7 +95,7 @@ def RuntimeCommand.actor(command: RuntimeCommand) -> Model.ActorId:
       source
     case RuntimeSwitch{source, incoming}:
       source
-    case RuntimeEscape{+source, player_speed, enemy_speed}:
+    case RuntimeEscape{+source}:
       source
 
 def RuntimeCommand.le(left: RuntimeCommand, right: RuntimeCommand) -> Bool:
@@ -109,7 +111,7 @@ def runtime_model_command(command: RuntimeCommand) -> Model.Command:
       Model.BattleWait{source}
     case RuntimeSwitch{source, incoming}:
       Model.BattleUtility{source, incoming, 0, 30, 0n}
-    case RuntimeEscape{+source, player_speed, enemy_speed}:
+    case RuntimeEscape{+source}:
       Model.BattleUtility{source, source, 0, 30, 0n}
 
 def runtime_model_commands(
@@ -159,6 +161,7 @@ def duplicate_runtime_source(
 
 def append_reservations(
   commands: List<&2, RuntimeCommand>, +sequence: Nat,
+  +player_speed: U32, +enemy_speed: U32,
   out: List<&2, QueuedReservation>
 ) -> List<&2, QueuedReservation>:
   match commands:
@@ -170,15 +173,19 @@ def append_reservations(
             priority, recoil, attacker}:
           QueuedMove{sequence, SourceReservation{source, move, target},
             attacker} <>
-            append_reservations(rest, 1n+sequence, out)
+            append_reservations(rest, 1n+sequence, player_speed, enemy_speed,
+              out)
         case RuntimeSwitch{source, incoming}:
           QueuedSwitch{sequence, source, incoming} <>
-            append_reservations(rest, 1n+sequence, out)
-        case RuntimeEscape{source, player_speed, enemy_speed}:
+            append_reservations(rest, 1n+sequence, player_speed, enemy_speed,
+              out)
+        case RuntimeEscape{source}:
           QueuedEscape{sequence, source, player_speed, enemy_speed} <>
-            append_reservations(rest, 1n+sequence, out)
+            append_reservations(rest, 1n+sequence, player_speed, enemy_speed,
+              out)
         case RuntimeWait{source}:
-          append_reservations(rest, 1n+sequence, out)
+          append_reservations(rest, 1n+sequence, player_speed, enemy_speed,
+            out)
 
 type RuntimeEvent is Data:
   RuntimeMiss{source: Model.ActorId, target: Model.ActorId, draw: U32}
@@ -191,7 +198,7 @@ type ActionResult is Data:
   ActionCommitted{rng: Rng.RngState, event: RuntimeEvent}
   ActionFizzled{rng: Rng.RngState, event: RuntimeEvent}
   ActionCancelled{rng: Rng.RngState, event: RuntimeEvent}
-  ActionFault{rng: Rng.RngState}
+  ActionFault{rng: Rng.RngState, reason: Rng.RngSampleResult}
 
 def miss_event(reservation: SourceReservation, +draw: U32) -> RuntimeEvent:
   match reservation:
@@ -241,8 +248,8 @@ def resolve_outcome(
           ActionCommitted{rng, hit_event(reservation, damage, critical)}
     case Combat.CombatInvalid{rng}:
       ActionFizzled{original, fizzle_event(reservation)}
-    case Combat.CombatRngFault{rng}:
-      ActionFault{original}
+    case Combat.CombatRngFault{rng, reason}:
+      ActionFault{original, reason}
 
 def resolve_profile(
   reservation: SourceReservation, +rng: Rng.RngState,
@@ -282,6 +289,10 @@ def escape_sample(
   match kind:
     case TrainerEncounter{}:
       EscapeUnavailable{rng, failed}
+    case BossEncounter{}:
+      EscapeUnavailable{rng, failed}
+    case LockedEncounter{}:
+      EscapeUnavailable{rng, failed}
     case WildEncounter{}:
       match sample:
         case Rng.RngSampled{+next_rng, +draw, candidates}:
@@ -302,7 +313,7 @@ def has_trainer_escape(
   match commands:
     case Nil{}:
       False{}
-    case RuntimeEscape{source, player_speed, enemy_speed} <> rest:
+    case RuntimeEscape{source} <> rest:
       True{}
     case command <> rest:
       has_trainer_escape(rest)
@@ -310,6 +321,10 @@ def has_trainer_escape(
 def trainer_kind(kind: EncounterKind) -> Bool:
   match kind:
     case TrainerEncounter{}:
+      True{}
+    case BossEncounter{}:
+      True{}
+    case LockedEncounter{}:
       True{}
     case WildEncounter{}:
       False{}
@@ -401,7 +416,7 @@ def runtime_command_in_state(
   match command:
     case RuntimeWait{source}:
       True{}
-    case RuntimeEscape{source, player_speed, enemy_speed}:
+    case RuntimeEscape{source}:
       True{}
     case RuntimeMove{source, +target, move, windup, recovery, cooldown,
         priority, recoil, attacker}:
@@ -469,6 +484,28 @@ def runtime_diagnostic(
         case False{}:
           semantic_diagnostic(commands)
 
+def active_speed_put(active: Bool, +speed: Nat) -> U32:
+  match active:
+    case True{}:
+      U32.from_nat(Nat.min(speed, 9999n))
+    case False{}:
+      0
+
+def active_speed(actor: Model.Actor, side: Model.Side) -> U32:
+  match actor:
+    case Model.Actor{id, actor_side, hp, +speed, phase, cooldown}:
+      active_speed_put(Participants.active_on_side(
+        Model.Actor{id, actor_side, hp, speed, phase, cooldown}, side), speed)
+
+def fastest_speed(
+  +side: Model.Side, actors: List<&2, Model.Actor>
+) -> U32:
+  match actors:
+    case Nil{}:
+      0
+    case actor <> rest:
+      U32.max(active_speed(actor, side), fastest_speed(side, rest))
+
 def queue_runtime_state(
   original: RuntimeState, next_battle: Model.BattleState,
   commands: List<&2, RuntimeCommand>,
@@ -478,9 +515,11 @@ def queue_runtime_state(
     case RuntimeState{+battle, +rng, encounter, failed_escapes, old_sources,
         +reservations, trapped, defenders}:
       match battle:
-        case Model.BattleState{now, wait_ticks, actors, events, +sequence, status}:
+        case Model.BattleState{now, wait_ticks, +actors, events, +sequence, status}:
           RuntimeState{next_battle, rng, encounter, failed_escapes, sources,
-            append_reservations(commands, sequence, reservations), trapped,
+            append_reservations(commands, sequence,
+              fastest_speed(Model.Player{}, actors),
+              fastest_speed(Model.Enemy{}, actors), reservations), trapped,
             defenders}
 
 type RuntimeBattle is Data:
@@ -718,7 +757,7 @@ type RuntimeAdvanceResult is Data:
     combat_events: List<&2, RuntimeEvent>
   }
   RuntimeIdle{state: RuntimeState}
-  RuntimeFault{state: RuntimeState}
+  RuntimeFault{state: RuntimeState, reason: Maybe<&2, Rng.RngSampleResult>}
 
 def reservation_source(reservation: SourceReservation) -> Model.ActorId:
   match reservation:
@@ -805,7 +844,7 @@ def commit_action_event(
         Reducer.valid_action(runtime_battle(original), tick, actor, target,
           recovery, 0, U32.to_nat(damage), recoil, remaining))
     case _:
-      RuntimeFault{original}
+      RuntimeFault{original, None{}}
 
 def resolved_move(
   result: ActionResult, +original: RuntimeState, +tick: U32,
@@ -817,8 +856,12 @@ def resolved_move(
     case ActionCommitted{rng, event}:
       commit_action_event(event, original, rng, tick, actor, target, recovery,
         cooldown, recoil, sequence, remaining, reservation)
-    case _:
-      RuntimeFault{original}
+    case ActionFizzled{rng, event}:
+      RuntimeFault{original, None{}}
+    case ActionCancelled{rng, event}:
+      RuntimeFault{original, None{}}
+    case ActionFault{rng, reason}:
+      RuntimeFault{original, Some{reason}}
 
 def defender_move(
   found: Maybe<&2, CombatProfile>, attacker: CombatProfile,
@@ -829,7 +872,7 @@ def defender_move(
 ) -> RuntimeAdvanceResult:
   match found:
     case None{}:
-      RuntimeFault{original}
+      RuntimeFault{original, None{}}
     case Some{defender}:
       resolved_move(resolve_profile(reservation, runtime_rng(original),
           combine_profiles(attacker, defender)), original, tick, actor, target,
@@ -1095,7 +1138,7 @@ def escape_result_commit(
       escape_failure(original, rng, failed, tick, actor, recovery, sequence,
         remaining)
     case _:
-      RuntimeFault{original}
+      RuntimeFault{original, None{}}
 
 def execute_escape_ready(
   ready: Bool, +original: RuntimeState, +tick: U32, +actor: Model.ActorId,
@@ -1159,7 +1202,7 @@ def execute_move_queued(
       execute_queued_move(reservation, attacker, original, tick, actor, target,
         recovery, cooldown, recoil, sequence, remaining)
     case _:
-      RuntimeFault{original}
+      RuntimeFault{original, None{}}
 
 def execute_move_found(
   found: Maybe<&2, QueuedReservation>, +original: RuntimeState, +tick: U32,
@@ -1187,7 +1230,7 @@ def execute_switch_queued(
       execute_escape(original, tick, actor, recovery, sequence, player_speed,
         enemy_speed, remaining)
     case _:
-      RuntimeFault{original}
+      RuntimeFault{original, None{}}
 
 def execute_utility_found(
   found: Maybe<&2, QueuedReservation>, +original: RuntimeState, +tick: U32,
@@ -1196,7 +1239,7 @@ def execute_utility_found(
 ) -> RuntimeAdvanceResult:
   match found:
     case None{}:
-      RuntimeFault{original}
+      RuntimeFault{original, None{}}
     case Some{queued}:
       execute_switch_queued(queued, original, tick, actor, target, recovery,
         sequence, remaining)
@@ -1321,7 +1364,10 @@ type RuntimeRunResult is Data:
     emitted: List<&2, Model.TransitionEvent>,
     combat_events: List<&2, RuntimeEvent>
   }
-  RuntimeRunFault{state: RuntimeState}
+  RuntimeRunFault{
+    state: RuntimeState,
+    reason: Maybe<&2, Rng.RngSampleResult>
+  }
 
 type RuntimeCursor is Data:
   RuntimeCursorActive{
@@ -1344,7 +1390,10 @@ type RuntimeCursor is Data:
     emitted: List<&2, Model.TransitionEvent>,
     combat_events: List<&2, RuntimeEvent>
   }
-  RuntimeCursorFault{state: RuntimeState}
+  RuntimeCursorFault{
+    state: RuntimeState,
+    reason: Maybe<&2, Rng.RngSampleResult>
+  }
 
 def runtime_status(state: RuntimeState) -> Model.BattleStatus:
   match state:
@@ -1389,8 +1438,8 @@ def runtime_after_step(
         List.append(&2, RuntimeEvent, prior_combat, combat_events))
     case RuntimeIdle{state}:
       RuntimeCursorActive{state, prior_emitted, prior_combat}
-    case RuntimeFault{state}:
-      RuntimeCursorFault{state}
+    case RuntimeFault{state, reason}:
+      RuntimeCursorFault{state, reason}
 
 def runtime_run_one(cursor: RuntimeCursor, ignored: Nat) -> RuntimeCursor:
   match cursor:
@@ -1402,8 +1451,8 @@ def runtime_run_one(cursor: RuntimeCursor, ignored: Nat) -> RuntimeCursor:
       RuntimeCursorTerminal{state, emitted, combat_events}
     case RuntimeCursorStalled{state, emitted, combat_events}:
       RuntimeCursorStalled{state, emitted, combat_events}
-    case RuntimeCursorFault{state}:
-      RuntimeCursorFault{state}
+    case RuntimeCursorFault{state, reason}:
+      RuntimeCursorFault{state, reason}
 
 def runtime_run_result(cursor: RuntimeCursor) -> RuntimeRunResult:
   match cursor:
@@ -1415,8 +1464,8 @@ def runtime_run_result(cursor: RuntimeCursor) -> RuntimeRunResult:
       RuntimeRunTerminal{state, emitted, combat_events}
     case RuntimeCursorStalled{state, emitted, combat_events}:
       RuntimeRunStalled{state, emitted, combat_events}
-    case RuntimeCursorFault{state}:
-      RuntimeRunFault{state}
+    case RuntimeCursorFault{state, reason}:
+      RuntimeRunFault{state, reason}
 
 def runtime_run(+fuel: Nat, state: RuntimeState) -> RuntimeRunResult:
   runtime_run_result(List.foldl(~&2, ~Nat, ~RuntimeCursor, ~runtime_run_one,

@@ -1,0 +1,12 @@
+{
+  "fixture_version": "m3-fixtures-1",
+  "id": "finite-reinforcements",
+  "kind": "reinforcement",
+  "description": "Reinforcement selection cannot create an actor beyond the validated encounter roster.",
+  "initial_state": {"tick": 1260, "ready_actor_ids": ["actor-01"], "active_ids": ["actor-01"], "roster_ids": ["actor-01", "actor-02"], "rng_state": [49, 50, 51, 52]},
+  "commands": [{"actor_id": "actor-01", "choice": "move", "move_id": "move-ko", "target_id": "actor-02", "windup": 0}],
+  "expected": {"result": "awaiting-next-barrier", "rng_draws": 0, "events": [
+    {"type": "reinforcement-arrived", "actor_id": "actor-02", "slot": 1, "order": "encounter-roster"},
+    {"type": "command-barrier-opened", "ready_actor_ids": ["actor-01", "actor-02"]}
+  ]}
+}

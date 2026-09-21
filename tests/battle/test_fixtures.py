@@ -69,6 +69,11 @@ class M3FixtureTests(unittest.TestCase):
             "battle-completed", "wait-scheduled", "command-rejected", "escape-attempted",
             "reinforcement-arrived", "switch-accepted",
         } <= event_types)
+        self.assertTrue({
+            "command-barrier-opened", "forced-replacement-required", "escape-failed",
+            "scheduler-stalled", "readiness-expired", "batch-rejected", "state-unchanged",
+            "rng-sampling-exhausted", "action-not-committed", "extra-input-discarded",
+        } <= event_types)
 
     def test_diagnostics_are_strict_and_deterministic(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

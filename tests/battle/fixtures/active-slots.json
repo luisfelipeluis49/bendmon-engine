@@ -1,0 +1,11 @@
+{
+  "fixture_version": "m3-fixtures-1",
+  "id": "active-slots",
+  "kind": "roster",
+  "description": "A side may expose at most four active participants while retaining a larger finite roster.",
+  "initial_state": {"tick": 1200, "ready_actor_ids": ["actor-01", "actor-02", "actor-03", "actor-04"], "active_ids": ["actor-01", "actor-02", "actor-03", "actor-04"], "roster_ids": ["actor-01", "actor-02", "actor-03", "actor-04", "actor-05"], "rng_state": [45, 46, 47, 48]},
+  "commands": [],
+  "expected": {"result": "active-slots-valid", "rng_draws": 0, "events": [
+    {"type": "command-barrier-opened", "ready_actor_ids": ["actor-01", "actor-02", "actor-03", "actor-04"]}
+  ]}
+}

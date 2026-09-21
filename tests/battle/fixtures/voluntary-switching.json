@@ -1,0 +1,12 @@
+{
+  "fixture_version": "m3-fixtures-1",
+  "id": "voluntary-switching",
+  "kind": "switch",
+  "description": "A ready actor may voluntarily switch to an eligible party replacement.",
+  "initial_state": {"tick": 1320, "ready_actor_ids": ["actor-01"], "party_ids": ["actor-01", "actor-04"], "active_ids": ["actor-01"], "rng_state": [53, 54, 55, 56]},
+  "commands": [{"actor_id": "actor-01", "choice": "switch", "replacement_id": "actor-04"}],
+  "expected": {"result": "awaiting-events", "rng_draws": 0, "events": [
+    {"type": "switch-accepted", "actor_id": "actor-01", "replacement_id": "actor-04"},
+    {"type": "actor-replaced", "actor_id": "actor-01", "replacement_id": "actor-04"}
+  ]}
+}

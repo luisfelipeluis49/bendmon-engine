@@ -11,6 +11,17 @@
     "cooldown-boundaries",
     "escape",
     "reinforcement",
-    "switch"
+    "switch",
+    "active-slots",
+    "finite-reinforcements",
+    "voluntary-switching",
+    "forced-replacement",
+    "escape-failure",
+    "empty-queue-stall",
+    "complete-barrier",
+    "simultaneous-readiness",
+    "rejection-unchanged",
+    "rng-exhaustion",
+    "terminal-extra-input"
   ]
 }

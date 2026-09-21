@@ -1,0 +1,11 @@
+{
+  "fixture_version": "m3-fixtures-1",
+  "id": "empty-queue-stall",
+  "kind": "scheduler",
+  "description": "A nonterminal state with no queued event and no command opportunity reports SchedulerStalled.",
+  "initial_state": {"tick": 1500, "ready_actor_ids": [], "rng_state": [65, 66, 67, 68]},
+  "commands": [],
+  "expected": {"result": "SchedulerStalled", "rng_draws": 0, "events": [
+    {"type": "scheduler-stalled", "reason": "empty-event-queue-and-no-opportunity"}
+  ]}
+}

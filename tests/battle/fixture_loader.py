@@ -24,6 +24,17 @@ SCENARIO_IDS = (
     "escape",
     "reinforcement",
     "switch",
+    "active-slots",
+    "finite-reinforcements",
+    "voluntary-switching",
+    "forced-replacement",
+    "escape-failure",
+    "empty-queue-stall",
+    "complete-barrier",
+    "simultaneous-readiness",
+    "rejection-unchanged",
+    "rng-exhaustion",
+    "terminal-extra-input",
 )
 
 INDEX_FIELDS = {"fixture_version", "scenarios"}
@@ -45,8 +56,8 @@ STATE_CHANGE_FIELDS = {"type", "target_id", "actor_id", "tick"}
 EVENT_FIELDS = {
     "type", "actor_ids", "order", "due_tick", "actor_id", "reason", "move_id",
     "deadline", "duration", "count", "effects", "outcome", "chance", "xp",
-    "currency", "items", "wait_ticks", "slot", "attempt_tick", "ready_actor_ids",
-    "replacement_id",
+    "currency", "items", "wait_ticks", "slot", "attempt_tick", "candidate_count",
+    "ready_actor_ids", "replacement_id",
 }
 
 

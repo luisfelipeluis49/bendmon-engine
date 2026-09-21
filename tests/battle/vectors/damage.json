@@ -1,0 +1,16 @@
+{
+  "vector_version": "m3-vectors-1",
+  "kind": "damage",
+  "vectors": [
+    {
+      "id": "damage-positive-integer-floor",
+      "inputs": {"power": 50, "level": 10, "captured_attack": 100, "current_defense": 50, "nonimmune": true},
+      "expected": {"numerator": 350000, "denominator": 15000, "damage": 23, "outcome": "Damage"}
+    },
+    {
+      "id": "damage-successful-zero-is-no-damage",
+      "inputs": {"power": 1, "level": 1, "captured_attack": 1, "current_defense": 9999, "nonimmune": true},
+      "expected": {"numerator": 52, "denominator": 2999700, "damage": 0, "outcome": "NoDamage"}
+    }
+  ]
+}

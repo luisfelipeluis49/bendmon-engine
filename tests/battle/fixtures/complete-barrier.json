@@ -1,0 +1,18 @@
+{
+  "fixture_version": "m3-fixtures-1",
+  "id": "complete-barrier",
+  "kind": "barrier",
+  "description": "A barrier with one command for every ready controllable actor commits as one batch.",
+  "initial_state": {"tick": 1560, "ready_actor_ids": ["actor-01", "actor-02", "actor-03"], "rng_state": [69, 70, 71, 72]},
+  "commands": [
+    {"actor_id": "actor-03", "choice": "wait", "wait_ticks": 30},
+    {"actor_id": "actor-01", "choice": "wait", "wait_ticks": 60},
+    {"actor_id": "actor-02", "choice": "wait", "wait_ticks": 120}
+  ],
+  "expected": {"result": "awaiting-events", "rng_draws": 0, "events": [
+    {"type": "commands-accepted", "actor_ids": ["actor-01", "actor-02", "actor-03"], "order": "stable-actor-id"},
+    {"type": "wait-scheduled", "actor_id": "actor-01", "due_tick": 1620},
+    {"type": "wait-scheduled", "actor_id": "actor-02", "due_tick": 1680},
+    {"type": "wait-scheduled", "actor_id": "actor-03", "due_tick": 1590}
+  ]}
+}

@@ -10,7 +10,7 @@ This is the single planning registry; no executable registry exists yet. Every l
 | MIX_SOURCE_COUNT | source moves per mix / count | exact integer | 2 | MIX-2–5 |
 | MIX_RECURSION_ALLOWED | recipe results as sources / boolean | boolean | false | MIX-7 |
 | CUSTOM_CODE_ALLOWED | executable project content / boolean | boolean | false | REF-1, trust boundary |
-| RULESET_VERSION | canonical semantics identity / version | exact version identifier | unassigned pre-release | M1 approval required; all save/replay laws |
+| RULESET_VERSION | canonical semantics identity / version | exact version identifier | `m3-1` for the first complete headless-battle contract | all save/replay laws; any semantic change requires a new identifier |
 | TICK_UNIT / TICK_MAX | timeline unit / ticks | 60 ticks/presentation second; bounded integer deadline | TICK_UNIT = 1/60 presentation second; TICK_MAX = 216000 (one active hour) | TIME-1; overflow and pacing |
 | WAIT_TICKS | duration of explicit Wait / ticks | exactly one of 30, 60, 120 per saved game | player selects at new-game creation; immutable for that game | barrier progress; TIME-1; save/replay header |
 | MIN_WINDUP | command acceptance to execution / ticks | >=0 | 0; current-tick execution queues only after atomic batch commit | scheduler ordering; D03 |

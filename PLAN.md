@@ -1,6 +1,6 @@
 # Monster RPG Maker — architecture plan
 
-Status: implementation authorized after planning review. M0 local foundation is implemented; remote CI/live device gates remain pending. The balance-independent M2 Content-0 slice is implemented and locally verified. On 2026-09-21 the owner approved every remaining recommended decision, including the R01–R13 and U01–U13 closures. No currently identified owner-choice blocker remains; future changes use explicit ruleset versioning. Fixed requirements and approved defaults are recorded in `docs/DECISIONS.md`. See `docs/architecture/M0-STATUS.md` and `docs/architecture/M2-STATUS.md` for current evidence.
+Status: implementation authorized after planning review. M0 local foundation and M2 Content-0 are implemented locally; remote CI/live device gates remain pending. The first M3 battle vertical slice is implemented and locally verified, with its remaining scope recorded in `docs/architecture/M3-STATUS.md`. On 2026-09-21 the owner approved every remaining recommended decision, including the R01–R13 and U01–U13 closures. No currently identified owner-choice blocker remains; future changes use explicit ruleset versioning. Fixed requirements and approved defaults are recorded in `docs/DECISIONS.md`.
 
 ## Objective and sequence
 

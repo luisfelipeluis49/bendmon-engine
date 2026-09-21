@@ -27,5 +27,6 @@ that was previously unavailable: a live XWayland/X11 window and input event, a
 successful PulseAudio/PipeWire stream of the generated tone, and execution of
 the compiler-free binary in a network-disabled clean Ubuntu 24.04 container.
 The integrated verifier now includes 133 checks and the M1 architecture contract
-suite. Hosted Ubuntu CI remains the final candidate-commit gate; Windows,
-macOS, GPU and production renderer/editor work are later milestones under D18.
+suite. GitHub Actions run 35635208337 passed the complete Ubuntu 24.04 gate and
+uploaded evidence. Windows, macOS, GPU and production renderer/editor work are
+later milestones under D18.

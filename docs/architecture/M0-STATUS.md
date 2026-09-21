@@ -1,6 +1,6 @@
 # M0 implementation evidence
 
-Status: formal exit candidate on 2026-09-21. The pinned foundation, local verification, live Linux desktop presentation and clean Ubuntu runtime gates pass. One hosted GitHub Actions run of the candidate commit remains before the status becomes complete.
+Status: complete and verified on 2026-09-21. The pinned foundation, local verification, live Linux desktop presentation, clean Ubuntu runtime and hosted Ubuntu CI gates pass.
 
 ## Verified locally
 
@@ -22,9 +22,9 @@ Only BOOT-1 is formally proved here. CLI decoding, compiler/code generation, run
 
 Native Nat representation is bounded by this compiler despite mathematical Nat types. The CLI limits each input to U32 and the batch to 1024, keeping accumulator totals below the native bound. This is a feasibility resource limit, not an engine rule. Future production arithmetic needs its own refinement/overflow proofs and tests.
 
-## Final hosted gate
+## Hosted evidence
 
-- `.github/workflows/verify.yml` runs the canonical verifier on Ubuntu 24.04 with Node 20 and clang, bootstraps the checksum-pinned local Bend toolchain and uploads evidence. M0 closes when that workflow passes on the commit containing this candidate.
+- GitHub Actions run [35635208337](https://github.com/luisfelipeluis49/bendmon-engine/actions/runs/35635208337) passed on commit `54ff24e7bd5efb336996979da2ae2469a24c6278`. The Ubuntu 24.04 job installed Node 20 and clang, bootstrapped the checksum-pinned Bend toolchain, passed the canonical verifier and uploaded its evidence artifact.
 
 Browser presentation, SDL3 production rendering, GPU acceleration, Windows and macOS support belong to M9/M10 and later platform validation. They are outside the approved M0 Linux x86-64 CPU feasibility exit and must not be advertised as supported. The M3 headless battle kernel is implemented; progression, the production renderer, full persistence and maker UI remain later milestones.
 
@@ -32,4 +32,4 @@ Independent review and corrected findings are recorded in [M0-REVIEW.md](M0-REVI
 
 ## Next slice
 
-Publish this candidate and obtain the hosted Ubuntu workflow result. M1–M3 are complete, so the next gameplay slice is M4's closed effect algebra.
+M0–M3 are complete. The next gameplay slice is M4's closed effect algebra.

@@ -1,6 +1,6 @@
 # M1 architecture and formal-domain status
 
-Status: complete and locally verified on 2026-09-21.
+Status: complete and verified on 2026-09-21, including the hosted Ubuntu gate.
 
 ## Closed architecture contract
 
@@ -28,7 +28,8 @@ Status: complete and locally verified on 2026-09-21.
 - The separate architecture review passed after its scheduler consistency
   corrections, and the owner subsequently closed every remaining decision.
 - `./scripts/bend PROOF.bend` reports `All terms check.`
-- `python3 scripts/verify.py` is the canonical integrated gate.
+- `python3 scripts/verify.py` is the canonical integrated gate. GitHub Actions
+  run 35635208337 passed it on Ubuntu 24.04.
 
 ## Boundary
 

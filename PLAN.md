@@ -1,6 +1,6 @@
 # Monster RPG Maker — architecture plan
 
-Status: implementation authorized after planning review. M1 architecture, M2 Content-0 and M3 headless battle are complete and verified; M0 has passed its local, live Linux desktop and clean Ubuntu runtime gates, with hosted GitHub CI tracked separately in `docs/architecture/M0-STATUS.md`. On 2026-09-21 the owner approved every remaining recommended decision, including the R01–R13 and U01–U13 closures. No currently identified owner-choice blocker remains; future changes use explicit ruleset versioning. Fixed requirements and approved defaults are recorded in `docs/DECISIONS.md`.
+Status: M0 bootstrap/feasibility, M1 architecture, M2 Content-0 and M3 headless battle are complete and verified locally and through hosted Ubuntu CI. On 2026-09-21 the owner approved every remaining recommended decision, including the R01–R13 and U01–U13 closures. No currently identified owner-choice blocker remains; future changes use explicit ruleset versioning. Fixed requirements and approved defaults are recorded in `docs/DECISIONS.md`.
 
 ## Objective and sequence
 
@@ -8,7 +8,7 @@ Build one content-agnostic, primarily Bend 2 engine with a deterministic headles
 
 | Milestone | Deliverable | Dependencies / approval gate | Implementer | Review / exit evidence |
 |---|---|---|---|---|
-| M0 Bootstrap / feasibility | Pinned Bend 2, guide audit, trivial law/proof, headless binary, CI, graphics/audio and host-call spikes | Owner identifies intended toolchain; work order approval | Sol; Luna CI/docs | Astra reviews toolchain/FFI; proof passes locally and in CI; platform matrix records evidence |
+| M0 Bootstrap / feasibility | **Complete:** pinned Bend 2, guide audit, production-linked bootstrap proof, native/JS headless binary, hosted CI, live Linux display/input/audio and clean Ubuntu runtime | Owner identifies intended toolchain; work order approval | Sol; Luna CI/docs | 133-check local/hosted gate, live desktop evidence, clean-container evidence and architecture review |
 | M1 Architecture / formal domain | **Complete:** approved domain/contracts, candidate-law boundary, D01–D19/U01–U13 closure, ADR-01–15 and exact semantic identity | M0 feasibility before representation freeze | Astra specifications; production-linked proof prototypes | Architecture contract suite, separate review, owner approval and canonical proof gate |
 | M2 Content kernel | **Implemented locally:** typed IDs, strict bounded parser/validator, manifests, catalogs, reference resolution, canonical identity and useful diagnostics | Balance-independent contract fixed; later schema families remain additive work | Sol; Luna schema fixtures under fixed contract | 102-check repository gate plus hostile-input suite; separate Sol/Astra review recorded in M2 status |
 | M3 Headless battle | **Implemented locally:** state, scheduler, targeting, readiness, typed move cooldowns, RNG, combat resolution, completion, rosters, switching, escape, bounded driver and replay harness | M2; timing, damage and RNG decisions approved | Sol; Luna mechanical fixtures | 132-check repository gate; native/JS goldens and repeated command logs yield equal canonical states |

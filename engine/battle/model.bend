@@ -10,8 +10,9 @@ type Side is Data:
 
 type Phase is Data:
   Ready{}
-  Windup{execution_tick: Nat}
-  Recovery{ready_tick: Nat}
+  Windup{execution_tick: U32}
+  Recovery{ready_tick: U32}
+  Benched{}
   Defeated{}
 
 # This first M3 slice carries one minimal damaging source per actor.  Later
@@ -24,7 +25,7 @@ type Actor is Data:
     hp: Nat,
     speed: Nat,
     phase: Phase,
-    cooldown_deadline: Nat
+    cooldown_deadline: U32
   }
 
 type Command is Data:
@@ -32,19 +33,26 @@ type Command is Data:
   BattleMove{
     actor: ActorId,
     target: ActorId,
-    windup: Nat,
-    recovery: Nat,
-    cooldown: Nat,
+    windup: U32,
+    recovery: U32,
+    cooldown: U32,
     priority_rank: Nat,
     damage: Nat,
     recoil: Nat
+  }
+  BattleUtility{
+    actor: ActorId,
+    target: ActorId,
+    windup: U32,
+    recovery: U32,
+    priority_rank: Nat
   }
 
 # Smaller keys execute first. priority_rank is the canonical 0..16 encoding
 # for authored priority +8..-8; speed itself is compared in descending order.
 type EventKey is Data:
   EventKey{
-    due_tick: Nat,
+    due_tick: U32,
     phase_rank: Nat,
     priority_rank: Nat,
     accepted_speed: Nat,
@@ -59,10 +67,16 @@ type BattleEvent is Data:
     key: EventKey,
     actor: ActorId,
     target: ActorId,
-    recovery: Nat,
-    cooldown: Nat,
+    recovery: U32,
+    cooldown: U32,
     damage: Nat,
     recoil: Nat
+  }
+  UtilityEvent{
+    key: EventKey,
+    actor: ActorId,
+    target: ActorId,
+    recovery: U32
   }
 
 type BattleStatus is Data:
@@ -73,11 +87,12 @@ type BattleStatus is Data:
   Draw{}
   Timeout{}
   Escaped{}
+  SchedulerStalled{}
 
 type BattleState is Data:
   BattleState{
-    now: Nat,
-    wait_ticks: Nat,
+    now: U32,
+    wait_ticks: U32,
     actors: List<&2, Actor>,
     events: List<&2, BattleEvent>,
     next_sequence: Nat,
@@ -95,10 +110,28 @@ type Diagnostic is Data:
   TimingInvalid{actor: ActorId}
   CooldownActive{actor: ActorId}
   DeadlineOverflow{actor: ActorId}
+  SwitchInvalid{actor: ActorId, incoming: ActorId}
+  EscapeUnavailable{actor: ActorId}
+  SourceReserved{actor: ActorId}
 
 type SubmitResult is Data:
   Accepted{state: BattleState, emitted: List<&2, BattleEvent>}
   Rejected{state: BattleState, diagnostics: List<&2, Diagnostic>}
+
+type TransitionEvent is Data:
+  BattleBecameReady{actor: ActorId, tick: U32}
+  BattleActionExecuted{actor: ActorId, target: ActorId, damage: Nat, recoil: Nat}
+  BattleActionCancelled{actor: ActorId}
+  BattleActionFizzled{actor: ActorId, target: ActorId}
+  BattleActorSwitched{actor: ActorId, incoming: ActorId}
+  BattleEscapeFailed{actor: ActorId}
+  BattleEscapeSucceeded{actor: ActorId}
+  BattleCompleted{status: BattleStatus, tick: U32}
+  BattlePendingDiscarded{count: Nat}
+
+type AdvanceResult is Data:
+  Advanced{state: BattleState, emitted: List<&2, TransitionEvent>}
+  AdvanceIdle{state: BattleState}
 
 def ActorId.eq(a: ActorId, b: ActorId) -> Bool:
   ActorId{a_value} = a
@@ -117,8 +150,10 @@ def Command.actor(command: Command) -> ActorId:
     case BattleMove{actor, target, windup, recovery, cooldown, priority_rank,
         damage, recoil}:
       actor
+    case BattleUtility{actor, target, windup, recovery, priority_rank}:
+      actor
 
-def Command.le(+left: Command, +right: Command) -> Bool:
+def Command.le(left: Command, right: Command) -> Bool:
   ActorId.le(Command.actor(left), Command.actor(right))
 
 def BattleEvent.key(event: BattleEvent) -> EventKey:
@@ -126,6 +161,8 @@ def BattleEvent.key(event: BattleEvent) -> EventKey:
     case ReadyEvent{key, actor}:
       key
     case ExecuteEvent{key, actor, target, recovery, cooldown, damage, recoil}:
+      key
+    case UtilityEvent{key, actor, target, recovery}:
       key
 
 def compare_actor(left: ActorId, right: ActorId) -> Cmp:
@@ -198,7 +235,7 @@ def compare_event_priority_order(
       False{}
     case EQ{}:
       compare_event_speed(left_speed, right_speed, left_actor, right_actor,
-        right_sequence, left_ordinal, right_ordinal)
+        left_sequence, right_sequence, left_ordinal, right_ordinal)
 
 def compare_event_priority(
   +left_priority: Nat, +right_priority: Nat, +left_speed: Nat,
@@ -256,10 +293,10 @@ def EventKey.le(left: EventKey, right: EventKey) -> Bool:
     +left_sequence, +left_ordinal} = left
   EventKey{+right_due, +right_phase, +right_priority, +right_speed, right_actor,
     +right_sequence, +right_ordinal} = right
-  compare_event_due_order(Nat.cmp(left_due, right_due), left_phase,
+  compare_event_due_order(U32.cmp(left_due, right_due), left_phase,
     right_phase, left_priority, right_priority, left_speed, right_speed,
     left_actor, right_actor, left_sequence, right_sequence, left_ordinal,
     right_ordinal)
 
-def BattleEvent.le(+left: BattleEvent, +right: BattleEvent) -> Bool:
+def BattleEvent.le(left: BattleEvent, right: BattleEvent) -> Bool:
   EventKey.le(BattleEvent.key(left), BattleEvent.key(right))

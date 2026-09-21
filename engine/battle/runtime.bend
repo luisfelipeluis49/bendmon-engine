@@ -1,0 +1,1423 @@
+import Base
+import ./model.bend as Model
+import ./rng.bend as Rng
+import ./combat_math.bend as Math
+import ./combat_resolver.bend as Combat
+import ./roster.bend as Roster
+import ./sources.bend as Sources
+import ./scheduler.bend as Scheduler
+import ./driver.bend as Driver
+import ./reducer.bend as Reducer
+import ./participants.bend as Participants
+
+# This file is the narrow runtime boundary for the current M3 battle slice.
+# It owns runtime snapshots and RNG transactions while Scheduler, Driver and
+# Combat remain the authorities for validation, event order and branch draws.
+type SourceReservation is Data:
+  SourceReservation{source: Model.ActorId, move: Math.MoveId, target: Model.ActorId}
+
+type CombatProfile is Data:
+  CombatProfile{
+    mode: Math.AccuracyMode,
+    attacker_accuracy: Math.Stage,
+    target_evasion: Math.Stage,
+    power: U32,
+    level: U32,
+    attack: U32,
+    defense: U32,
+    critical_bonus: U32
+  }
+
+type ActionSnapshot is Data:
+  ActionSnapshot{
+    reservation: SourceReservation,
+    profile: CombatProfile,
+    rng: Rng.RngState
+  }
+
+type DefenderSnapshot is Data:
+  DefenderSnapshot{target: Model.ActorId, profile: CombatProfile}
+
+type EncounterKind is Data:
+  WildEncounter{}
+  TrainerEncounter{}
+
+type QueuedReservation is Data:
+  QueuedMove{
+    sequence: Nat,
+    reservation: SourceReservation,
+    attacker: CombatProfile
+  }
+  QueuedSwitch{sequence: Nat, source: Model.ActorId, incoming: Model.ActorId}
+  QueuedEscape{
+    sequence: Nat,
+    source: Model.ActorId,
+    player_speed: U32,
+    enemy_speed: U32
+  }
+
+type RuntimeState is Data:
+  RuntimeState{
+    battle: Model.BattleState,
+    rng: Rng.RngState,
+    encounter: EncounterKind,
+    failed_escapes: U32,
+    sources: List<&2, Sources.MoveSource>,
+    reservations: List<&2, QueuedReservation>,
+    trapped: List<&2, Model.ActorId>,
+    defenders: List<&2, DefenderSnapshot>
+  }
+
+type RuntimeCommand is Data:
+  RuntimeMove{
+    source: Model.ActorId,
+    target: Model.ActorId,
+    move: Math.MoveId,
+    windup: U32,
+    recovery: U32,
+    cooldown: U32,
+    priority: Nat,
+    recoil: Nat,
+    attacker: CombatProfile
+  }
+  RuntimeWait{source: Model.ActorId}
+  RuntimeSwitch{source: Model.ActorId, incoming: Model.ActorId}
+  RuntimeEscape{source: Model.ActorId, player_speed: U32, enemy_speed: U32}
+
+def RuntimeCommand.actor(command: RuntimeCommand) -> Model.ActorId:
+  match command:
+    case RuntimeMove{source, target, move, windup, recovery, cooldown, priority,
+        recoil, attacker}:
+      source
+    case RuntimeWait{source}:
+      source
+    case RuntimeSwitch{source, incoming}:
+      source
+    case RuntimeEscape{+source, player_speed, enemy_speed}:
+      source
+
+def RuntimeCommand.le(left: RuntimeCommand, right: RuntimeCommand) -> Bool:
+  Model.ActorId.le(RuntimeCommand.actor(left), RuntimeCommand.actor(right))
+
+def runtime_model_command(command: RuntimeCommand) -> Model.Command:
+  match command:
+    case RuntimeMove{source, target, move, windup, recovery, cooldown, priority,
+        recoil, attacker}:
+      Model.BattleMove{source, target, windup, recovery, cooldown, priority,
+        0n, recoil}
+    case RuntimeWait{source}:
+      Model.BattleWait{source}
+    case RuntimeSwitch{source, incoming}:
+      Model.BattleUtility{source, incoming, 0, 30, 0n}
+    case RuntimeEscape{+source, player_speed, enemy_speed}:
+      Model.BattleUtility{source, source, 0, 30, 0n}
+
+def runtime_model_commands(
+  commands: List<&2, RuntimeCommand>
+) -> List<&2, Model.Command>:
+  match commands:
+    case Nil{}:
+      Nil{}
+    case command <> +rest:
+      runtime_model_command(command) <> runtime_model_commands(rest)
+
+def runtime_source_requests(
+  commands: List<&2, RuntimeCommand>
+) -> List<&2, Sources.SourceRequest>:
+  match commands:
+    case Nil{}:
+      Nil{}
+    case RuntimeMove{source, target, move, windup, recovery, cooldown,
+        priority, recoil, attacker} <> rest:
+      Sources.SourceRequest{source, move} <> runtime_source_requests(rest)
+    case command <> rest:
+      runtime_source_requests(rest)
+
+def command_source_used(
+  +wanted: Model.ActorId, commands: List<&2, RuntimeCommand>
+) -> Bool:
+  match commands:
+    case Nil{}:
+      False{}
+    case command <> rest:
+      Bool.or(Model.ActorId.eq(wanted, RuntimeCommand.actor(command)),
+        command_source_used(wanted, rest))
+
+def duplicate_runtime_source(
+  commands: List<&2, RuntimeCommand>, found: Bool
+) -> Bool:
+  match commands:
+    case Nil{}:
+      found
+    case command <> +rest:
+      match found:
+        case True{}:
+          True{}
+        case False{}:
+          duplicate_runtime_source(rest,
+            command_source_used(RuntimeCommand.actor(command), rest))
+
+def append_reservations(
+  commands: List<&2, RuntimeCommand>, +sequence: Nat,
+  out: List<&2, QueuedReservation>
+) -> List<&2, QueuedReservation>:
+  match commands:
+    case Nil{}:
+      out
+    case command <> rest:
+      match command:
+        case RuntimeMove{source, +target, move, windup, recovery, cooldown,
+            priority, recoil, attacker}:
+          QueuedMove{sequence, SourceReservation{source, move, target},
+            attacker} <>
+            append_reservations(rest, 1n+sequence, out)
+        case RuntimeSwitch{source, incoming}:
+          QueuedSwitch{sequence, source, incoming} <>
+            append_reservations(rest, 1n+sequence, out)
+        case RuntimeEscape{source, player_speed, enemy_speed}:
+          QueuedEscape{sequence, source, player_speed, enemy_speed} <>
+            append_reservations(rest, 1n+sequence, out)
+        case RuntimeWait{source}:
+          append_reservations(rest, 1n+sequence, out)
+
+type RuntimeEvent is Data:
+  RuntimeMiss{source: Model.ActorId, target: Model.ActorId, draw: U32}
+  RuntimeNoDamage{source: Model.ActorId, target: Model.ActorId, critical: Bool}
+  RuntimeHit{source: Model.ActorId, target: Model.ActorId, damage: U32, critical: Bool}
+  RuntimeFizzle{source: Model.ActorId, target: Model.ActorId}
+  RuntimeCancel{source: Model.ActorId, target: Model.ActorId}
+
+type ActionResult is Data:
+  ActionCommitted{rng: Rng.RngState, event: RuntimeEvent}
+  ActionFizzled{rng: Rng.RngState, event: RuntimeEvent}
+  ActionCancelled{rng: Rng.RngState, event: RuntimeEvent}
+  ActionFault{rng: Rng.RngState}
+
+def miss_event(reservation: SourceReservation, +draw: U32) -> RuntimeEvent:
+  match reservation:
+    case SourceReservation{source, move, target}:
+      RuntimeMiss{source, target, draw}
+
+def no_damage_event(reservation: SourceReservation, critical: Bool) -> RuntimeEvent:
+  match reservation:
+    case SourceReservation{source, move, target}:
+      RuntimeNoDamage{source, target, critical}
+
+def hit_event(
+  reservation: SourceReservation, +damage: U32, critical: Bool
+) -> RuntimeEvent:
+  match reservation:
+    case SourceReservation{source, move, target}:
+      RuntimeHit{source, target, damage, critical}
+
+def fizzle_event(reservation: SourceReservation) -> RuntimeEvent:
+  match reservation:
+    case SourceReservation{source, move, target}:
+      RuntimeFizzle{source, target}
+
+def cancel_event(reservation: SourceReservation) -> RuntimeEvent:
+  match reservation:
+    case SourceReservation{source, move, target}:
+      RuntimeCancel{source, target}
+
+def resolve_outcome(
+  reservation: SourceReservation, +original: Rng.RngState,
+  result: Combat.CombatResolution
+) -> ActionResult:
+  match result:
+    case Combat.CombatResolved{+rng, outcome}:
+      match outcome:
+        case Combat.CombatMiss{draw, accuracy_candidates}:
+          ActionCommitted{rng, miss_event(reservation, draw)}
+        case Combat.CombatEffect{accuracy_candidates}:
+          ActionCommitted{rng, no_damage_event(reservation, False{})}
+        case Combat.CombatImmune{accuracy_candidates}:
+          ActionCommitted{rng, no_damage_event(reservation, False{})}
+        case Combat.CombatNoDamage{critical, critical_draw,
+            accuracy_candidates, critical_candidates}:
+          ActionCommitted{rng, no_damage_event(reservation, critical)}
+        case Combat.CombatHit{damage, critical, critical_draw,
+            accuracy_candidates, critical_candidates}:
+          ActionCommitted{rng, hit_event(reservation, damage, critical)}
+    case Combat.CombatInvalid{rng}:
+      ActionFizzled{original, fizzle_event(reservation)}
+    case Combat.CombatRngFault{rng}:
+      ActionFault{original}
+
+def resolve_profile(
+  reservation: SourceReservation, +rng: Rng.RngState,
+  profile: CombatProfile
+) -> ActionResult:
+  match profile:
+    case CombatProfile{mode, attacker_accuracy, target_evasion, +power, +level,
+        +attack, +defense, +critical_bonus}:
+      resolve_outcome(reservation, rng,
+        Combat.resolve(rng, mode, attacker_accuracy, target_evasion, power,
+          level, attack, defense, critical_bonus))
+
+def resolve_action(snapshot: ActionSnapshot) -> ActionResult:
+  match snapshot:
+    case ActionSnapshot{reservation, profile, +rng}:
+      resolve_profile(reservation, rng, profile)
+
+type EscapeResult is Data:
+  EscapeSucceeded{rng: Rng.RngState}
+  EscapeFailed{rng: Rng.RngState, failed_attempts: U32}
+  EscapeUnavailable{rng: Rng.RngState, failed_attempts: U32}
+  EscapeRejected{rng: Rng.RngState, failed_attempts: U32}
+
+def escape_decide(
+  hit: Bool, +next_rng: Rng.RngState, +failed: U32
+) -> EscapeResult:
+  match hit:
+    case True{}:
+      EscapeSucceeded{next_rng}
+    case False{}:
+      EscapeFailed{next_rng, U32.add(failed, 1)}
+
+def escape_sample(
+  kind: EncounterKind, +rng: Rng.RngState, +failed: U32, +chance: U32,
+  sample: Rng.RngSampleResult
+) -> EscapeResult:
+  match kind:
+    case TrainerEncounter{}:
+      EscapeUnavailable{rng, failed}
+    case WildEncounter{}:
+      match sample:
+        case Rng.RngSampled{+next_rng, +draw, candidates}:
+          escape_decide(U32.is_lt(draw, chance), next_rng, failed)
+        case _:
+          EscapeRejected{rng, failed}
+
+def escape_attempt(
+  kind: EncounterKind, +rng: Rng.RngState, +failed: U32,
+  +player_speed: U32, +enemy_speed: U32
+) -> EscapeResult:
+  +chance = Roster.escape_chance(player_speed, enemy_speed, failed)
+  escape_sample(kind, rng, failed, chance, Rng.sample(rng, 10000))
+
+def has_trainer_escape(
+  commands: List<&2, RuntimeCommand>
+) -> Bool:
+  match commands:
+    case Nil{}:
+      False{}
+    case RuntimeEscape{source, player_speed, enemy_speed} <> rest:
+      True{}
+    case command <> rest:
+      has_trainer_escape(rest)
+
+def trainer_kind(kind: EncounterKind) -> Bool:
+  match kind:
+    case TrainerEncounter{}:
+      True{}
+    case WildEncounter{}:
+      False{}
+
+def trapped_actor(
+  +wanted: Model.ActorId, trapped: List<&2, Model.ActorId>
+) -> Bool:
+  match trapped:
+    case Nil{}:
+      False{}
+    case +actor <> rest:
+      Bool.or(Model.ActorId.eq(wanted, actor), trapped_actor(wanted, rest))
+
+def mode_ok(mode: Math.AccuracyMode, accuracy: Math.Stage) -> Bool:
+  match mode:
+    case Math.AlwaysHit{}:
+      Math.stage_ok(accuracy)
+    case Math.OrdinaryAccuracy{+base}:
+      Bool.and(Bool.and(U32.is_ge(base, 500), U32.is_le(base, 10000)),
+        Math.stage_ok(accuracy))
+
+def attacker_profile_ok(profile: CombatProfile) -> Bool:
+  match profile:
+    case CombatProfile{mode, accuracy, evasion, +power, +level, +attack,
+        defense, critical_bonus}:
+      Bool.and(mode_ok(mode, accuracy),
+        Bool.and(Bool.and(U32.is_ge(power, 1), U32.is_le(power, 200)),
+          Bool.and(Bool.and(U32.is_ge(level, 1), U32.is_le(level, 200)),
+            Bool.and(U32.is_ge(attack, 1), U32.is_le(attack, 9999)))))
+
+def defender_profile_ok(profile: CombatProfile) -> Bool:
+  match profile:
+    case CombatProfile{mode, accuracy, evasion, power, level, attack,
+        +defense, critical_bonus}:
+      Bool.and(Math.stage_ok(evasion),
+        Bool.and(U32.is_ge(defense, 1), U32.is_le(defense, 9999)))
+
+def defender_found_ok(found: Maybe<&2, CombatProfile>) -> Bool:
+  match found:
+    case None{}:
+      False{}
+    case Some{profile}:
+      defender_profile_ok(profile)
+
+def switch_actor_values(out_actor: Model.Actor, in_actor: Model.Actor) -> Bool:
+  match out_actor in_actor:
+    case Model.Actor{out_id, out_side, out_hp, out_speed, out_phase, out_cd}
+        Model.Actor{in_id, in_side, 0n, in_speed, in_phase, in_cd}:
+      False{}
+    case Model.Actor{out_id, out_side, out_hp, out_speed, out_phase, out_cd}
+        Model.Actor{in_id, in_side, 1n+in_hp, in_speed, Model.Benched{}, in_cd}:
+      Participants.same_side(out_side, in_side)
+    case _ _:
+      False{}
+
+def switch_found_ok(
+  outgoing: Maybe<&2, Model.Actor>, incoming: Maybe<&2, Model.Actor>
+) -> Bool:
+  match outgoing incoming:
+    case Some{out_actor} Some{in_actor}:
+      switch_actor_values(out_actor, in_actor)
+    case _ _:
+      False{}
+
+def precheck_defender_put(
+  equal: Bool, profile: CombatProfile, fallback: Maybe<&2, CombatProfile>
+) -> Maybe<&2, CombatProfile>:
+  match equal:
+    case True{}:
+      Some{profile}
+    case False{}:
+      fallback
+
+def precheck_find_defender(
+  +target: Model.ActorId, defenders: List<&2, DefenderSnapshot>
+) -> Maybe<&2, CombatProfile>:
+  match defenders:
+    case Nil{}:
+      None{}
+    case DefenderSnapshot{+actor, profile} <> rest:
+      precheck_defender_put(Model.ActorId.eq(target, actor), profile,
+        precheck_find_defender(target, rest))
+
+def runtime_command_in_state(
+  command: RuntimeCommand, +battle: Model.BattleState,
+  trapped: List<&2, Model.ActorId>,
+  defenders: List<&2, DefenderSnapshot>
+) -> Bool:
+  match command:
+    case RuntimeWait{source}:
+      True{}
+    case RuntimeEscape{source, player_speed, enemy_speed}:
+      True{}
+    case RuntimeMove{source, +target, move, windup, recovery, cooldown,
+        priority, recoil, attacker}:
+      Bool.and(attacker_profile_ok(attacker),
+        defender_found_ok(precheck_find_defender(target, defenders)))
+    case RuntimeSwitch{+source, +incoming}:
+      Bool.and(Bool.not(trapped_actor(source, trapped)),
+        switch_found_ok(Scheduler.find_actor(source,
+            Reducer.state_actors(battle)),
+          Scheduler.find_actor(incoming, Reducer.state_actors(battle))))
+
+def runtime_command_ok(command: RuntimeCommand, +state: RuntimeState) -> Bool:
+  match state:
+    case RuntimeState{battle, rng, encounter, failed, sources, reservations,
+        trapped, defenders}:
+      runtime_command_in_state(command, battle, trapped, defenders)
+
+def runtime_commands_ok(
+  commands: List<&2, RuntimeCommand>, +state: RuntimeState
+) -> Bool:
+  match commands:
+    case Nil{}:
+      True{}
+    case command <> rest:
+      Bool.and(runtime_command_ok(command, state),
+        runtime_commands_ok(rest, state))
+
+def first_source(commands: List<&2, RuntimeCommand>) -> Model.ActorId:
+  match commands:
+    case Nil{}:
+      Model.ActorId{0n}
+    case command <> rest:
+      RuntimeCommand.actor(command)
+
+def runtime_precheck(
+  duplicate: Bool, trainer_escape: Bool, semantic_ok: Bool
+) -> Bool:
+  Bool.and(Bool.not(Bool.or(duplicate, trainer_escape)), semantic_ok)
+
+def semantic_diagnostic(
+  commands: List<&2, RuntimeCommand>
+) -> List<&2, Model.Diagnostic>:
+  match commands:
+    case RuntimeSwitch{source, incoming} <> rest:
+      [Model.SwitchInvalid{source, incoming}]
+    case RuntimeMove{source, target, move, windup, recovery, cooldown, priority,
+        recoil, attacker} <> rest:
+      [Model.TargetInvalid{source, target}]
+    case command <> rest:
+      [Model.ActorNotReady{RuntimeCommand.actor(command)}]
+    case Nil{}:
+      [Model.IncompleteBarrier{}]
+
+def runtime_diagnostic(
+  duplicate: Bool, trainer_escape: Bool, semantic_ok: Bool,
+  commands: List<&2, RuntimeCommand>
+) -> List<&2, Model.Diagnostic>:
+  match duplicate:
+    case True{}:
+      [Model.SourceReserved{first_source(commands)}]
+    case False{}:
+      match trainer_escape:
+        case True{}:
+          [Model.EscapeUnavailable{first_source(commands)}]
+        case False{}:
+          semantic_diagnostic(commands)
+
+def queue_runtime_state(
+  original: RuntimeState, next_battle: Model.BattleState,
+  commands: List<&2, RuntimeCommand>,
+  sources: List<&2, Sources.MoveSource>
+) -> RuntimeState:
+  match original:
+    case RuntimeState{+battle, +rng, encounter, failed_escapes, old_sources,
+        +reservations, trapped, defenders}:
+      match battle:
+        case Model.BattleState{now, wait_ticks, actors, events, +sequence, status}:
+          RuntimeState{next_battle, rng, encounter, failed_escapes, sources,
+            append_reservations(commands, sequence, reservations), trapped,
+            defenders}
+
+type RuntimeBattle is Data:
+  RuntimeAdvanced{state: Model.BattleState, emitted: List<&2, Model.TransitionEvent>}
+  RuntimeTerminal{state: Model.BattleState, emitted: List<&2, Model.TransitionEvent>}
+  RuntimeStalled{state: Model.BattleState, emitted: List<&2, Model.TransitionEvent>}
+  RuntimeRejected{state: Model.BattleState, diagnostics: List<&2, Model.Diagnostic>}
+
+type RuntimeSubmitResult is Data:
+  RuntimeAccepted{state: RuntimeState, emitted: List<&2, Model.BattleEvent>}
+  RuntimeSubmitRejected{state: RuntimeState, diagnostics: List<&2, Model.Diagnostic>}
+
+def drive_result(result: Driver.DriveResult) -> RuntimeBattle:
+  match result:
+    case Driver.DriveBoundary{state, emitted}:
+      RuntimeAdvanced{state, emitted}
+    case Driver.DriveTerminal{state, emitted}:
+      RuntimeTerminal{state, emitted}
+    case Driver.DriveStalled{state, emitted}:
+      RuntimeStalled{state, emitted}
+    case Driver.DriveYielded{state, emitted}:
+      RuntimeAdvanced{state, emitted}
+
+def submit_result(
+  +fuel: Nat, result: Model.SubmitResult
+) -> RuntimeBattle:
+  match result:
+    case Model.Rejected{state, diagnostics}:
+      RuntimeRejected{state, diagnostics}
+    case Model.Accepted{state, emitted}:
+      drive_result(Driver.run(state, fuel))
+
+def submit(
+  +fuel: Nat, +state: Model.BattleState,
+  commands: List<&2, Model.Command>
+) -> RuntimeBattle:
+  submit_result(fuel, Scheduler.submit(state, commands))
+
+def runtime_submit_model(
+  +fuel: Nat, original: RuntimeState,
+  commands: List<&2, RuntimeCommand>,
+  sources: List<&2, Sources.MoveSource>,
+  model_result: Model.SubmitResult
+) -> RuntimeSubmitResult:
+  match model_result:
+    case Model.Rejected{state, diagnostics}:
+      RuntimeSubmitRejected{original, diagnostics}
+    case Model.Accepted{state, emitted}:
+      RuntimeAccepted{queue_runtime_state(original, state, commands, sources), emitted}
+
+def runtime_battle(state: RuntimeState) -> Model.BattleState:
+  match state:
+    case RuntimeState{battle, rng, encounter, failed_escapes, sources,
+        reservations, trapped, defenders}:
+      battle
+
+def runtime_sources(state: RuntimeState) -> List<&2, Sources.MoveSource>:
+  match state:
+    case RuntimeState{battle, rng, encounter, failed_escapes, sources,
+        reservations, trapped, defenders}:
+      sources
+
+def runtime_now(state: RuntimeState) -> U32:
+  match state:
+    case RuntimeState{battle, rng, encounter, failed_escapes, sources,
+        reservations, trapped, defenders}:
+      match battle:
+        case Model.BattleState{now, wait_ticks, actors, events, sequence, status}:
+          now
+
+def runtime_reserve_result(
+  +fuel: Nat, +original: RuntimeState,
+  +commands: List<&2, RuntimeCommand>,
+  reserved: Sources.ReserveResult
+) -> RuntimeSubmitResult:
+  match reserved:
+    case Sources.SourcesRejected{sources}:
+      RuntimeSubmitRejected{original,
+        [Model.SourceReserved{first_source(commands)}]}
+    case Sources.SourcesReserved{sources}:
+      runtime_submit_model(fuel, original, commands, sources,
+        Scheduler.submit(runtime_battle(original), runtime_model_commands(commands)))
+
+def runtime_submit_checked(
+  ok: Bool, duplicate: Bool, trainer_escape: Bool, semantic_ok: Bool,
+  +fuel: Nat, +original: RuntimeState,
+  commands: List<&2, RuntimeCommand>
+) -> RuntimeSubmitResult:
+  match ok:
+    case False{}:
+      RuntimeSubmitRejected{original, runtime_diagnostic(duplicate,
+        trainer_escape, semantic_ok, commands)}
+    case True{}:
+      +ordered = List.sort(~RuntimeCommand, ~RuntimeCommand.le, commands)
+      runtime_reserve_result(fuel, original, ordered,
+        Sources.reserve_batch(runtime_now(original),
+          runtime_source_requests(ordered), runtime_sources(original)))
+
+def runtime_submit(
+  +fuel: Nat, +original: RuntimeState,
+  +commands: List<&2, RuntimeCommand>
+) -> RuntimeSubmitResult:
+  match original:
+    case RuntimeState{battle, rng, encounter, failed_escapes, sources,
+        reservations, trapped, defenders}:
+      +duplicate = duplicate_runtime_source(commands, False{})
+      +trainer_escape = Bool.and(has_trainer_escape(commands),
+        trainer_kind(encounter))
+      +semantic_ok = runtime_commands_ok(commands, original)
+      runtime_submit_checked(
+        runtime_precheck(duplicate, trainer_escape, semantic_ok), duplicate,
+        trainer_escape, semantic_ok, fuel, original, commands)
+
+def queued_sequence(queued: QueuedReservation) -> Nat:
+  match queued:
+    case QueuedMove{sequence, reservation, attacker}:
+      sequence
+    case QueuedSwitch{sequence, source, incoming}:
+      sequence
+    case QueuedEscape{sequence, source, player_speed, enemy_speed}:
+      sequence
+
+def find_queued_put(
+  equal: Bool, queued: QueuedReservation,
+  fallback: Maybe<&2, QueuedReservation>
+) -> Maybe<&2, QueuedReservation>:
+  match equal:
+    case True{}:
+      Some{queued}
+    case False{}:
+      fallback
+
+def find_queued(
+  +sequence: Nat, reservations: List<&2, QueuedReservation>
+) -> Maybe<&2, QueuedReservation>:
+  match reservations:
+    case Nil{}:
+      None{}
+    case +queued <> rest:
+      find_queued_put(Nat.is_eq(sequence, queued_sequence(queued)), queued,
+        find_queued(sequence, rest))
+
+def remove_queued_put(
+  equal: Bool, queued: QueuedReservation,
+  rest: List<&2, QueuedReservation>,
+  filtered: List<&2, QueuedReservation>
+) -> List<&2, QueuedReservation>:
+  match equal:
+    case True{}:
+      rest
+    case False{}:
+      queued <> filtered
+
+def remove_queued(
+  +sequence: Nat, reservations: List<&2, QueuedReservation>
+) -> List<&2, QueuedReservation>:
+  match reservations:
+    case Nil{}:
+      Nil{}
+    case +queued <> +rest:
+      remove_queued_put(Nat.is_eq(sequence, queued_sequence(queued)), queued,
+        rest, remove_queued(sequence, rest))
+
+def find_defender_put(
+  equal: Bool, profile: CombatProfile, fallback: Maybe<&2, CombatProfile>
+) -> Maybe<&2, CombatProfile>:
+  match equal:
+    case True{}:
+      Some{profile}
+    case False{}:
+      fallback
+
+def find_defender(
+  +target: Model.ActorId, defenders: List<&2, DefenderSnapshot>
+) -> Maybe<&2, CombatProfile>:
+  match defenders:
+    case Nil{}:
+      None{}
+    case DefenderSnapshot{+actor, profile} <> rest:
+      find_defender_put(Model.ActorId.eq(target, actor), profile,
+        find_defender(target, rest))
+
+def combine_profiles(
+  attacker: CombatProfile, defender: CombatProfile
+) -> CombatProfile:
+  match attacker defender:
+    case CombatProfile{mode, accuracy, ignored_evasion, power, level, attack,
+        ignored_defense, critical_bonus}
+        CombatProfile{ignored_mode, ignored_accuracy, evasion, ignored_power,
+        ignored_level, ignored_attack, defense, ignored_critical}:
+      CombatProfile{mode, accuracy, evasion, power, level, attack, defense,
+        critical_bonus}
+
+def runtime_update(
+  original: RuntimeState, battle: Model.BattleState, rng: Rng.RngState,
+  +failed_escapes: U32, sources: List<&2, Sources.MoveSource>,
+  reservations: List<&2, QueuedReservation>
+) -> RuntimeState:
+  match original:
+    case RuntimeState{old_battle, old_rng, encounter, old_failed, old_sources,
+        old_reservations, trapped, defenders}:
+      RuntimeState{battle, rng, encounter, failed_escapes, sources,
+        reservations, trapped, defenders}
+
+def runtime_rng(state: RuntimeState) -> Rng.RngState:
+  match state:
+    case RuntimeState{battle, rng, encounter, failed, sources, reservations,
+        trapped, defenders}:
+      rng
+
+def runtime_failed(state: RuntimeState) -> U32:
+  match state:
+    case RuntimeState{battle, rng, encounter, failed, sources, reservations,
+        trapped, defenders}:
+      failed
+
+def runtime_reservations(
+  state: RuntimeState
+) -> List<&2, QueuedReservation>:
+  match state:
+    case RuntimeState{battle, rng, encounter, failed, sources, reservations,
+        trapped, defenders}:
+      reservations
+
+def runtime_defenders(state: RuntimeState) -> List<&2, DefenderSnapshot>:
+  match state:
+    case RuntimeState{battle, rng, encounter, failed, sources, reservations,
+        trapped, defenders}:
+      defenders
+
+type RuntimeAdvanceResult is Data:
+  RuntimeStep{
+    state: RuntimeState,
+    emitted: List<&2, Model.TransitionEvent>,
+    combat_events: List<&2, RuntimeEvent>
+  }
+  RuntimeIdle{state: RuntimeState}
+  RuntimeFault{state: RuntimeState}
+
+def reservation_source(reservation: SourceReservation) -> Model.ActorId:
+  match reservation:
+    case SourceReservation{source, move, target}:
+      source
+
+def reservation_move(reservation: SourceReservation) -> Math.MoveId:
+  match reservation:
+    case SourceReservation{source, move, target}:
+      move
+
+def reducer_commit(
+  original: RuntimeState, +rng: Rng.RngState,
+  sources: List<&2, Sources.MoveSource>,
+  reservations: List<&2, QueuedReservation>, +failed: U32,
+  combat_events: List<&2, RuntimeEvent>, result: Model.AdvanceResult
+) -> RuntimeAdvanceResult:
+  match result:
+    case Model.Advanced{battle, emitted}:
+      RuntimeStep{runtime_update(original, battle, rng, failed, sources,
+        reservations), emitted, combat_events}
+    case Model.AdvanceIdle{battle}:
+      RuntimeIdle{runtime_update(original, battle, rng, failed, sources,
+        reservations)}
+
+def cancel_move(
+  +original: RuntimeState, +tick: U32, +actor: Model.ActorId,
+  target: Model.ActorId, +sequence: Nat, remaining: List<&2, Model.BattleEvent>,
+  +reservation: SourceReservation
+) -> RuntimeAdvanceResult:
+  reducer_commit(original, runtime_rng(original),
+    Sources.release(reservation_source(reservation), reservation_move(reservation),
+      runtime_sources(original)),
+    remove_queued(sequence, runtime_reservations(original)),
+    runtime_failed(original), [cancel_event(reservation)],
+    Reducer.cancelled_transition(runtime_battle(original), tick, actor, remaining))
+
+def fizzle_move(
+  +original: RuntimeState, +tick: U32, +actor: Model.ActorId,
+  +target: Model.ActorId, +recovery: U32, +cooldown: U32, +sequence: Nat,
+  remaining: List<&2, Model.BattleEvent>, +reservation: SourceReservation
+) -> RuntimeAdvanceResult:
+  reducer_commit(original, runtime_rng(original),
+    Sources.charge_source(reservation_source(reservation),
+      reservation_move(reservation), U32.add(tick, cooldown),
+      runtime_sources(original)),
+    remove_queued(sequence, runtime_reservations(original)),
+    runtime_failed(original), [fizzle_event(reservation)],
+    Reducer.fizzle_action(runtime_battle(original), tick, actor, target,
+      recovery, 0, remaining))
+
+def commit_action_event(
+  event: RuntimeEvent, +original: RuntimeState, +rng: Rng.RngState,
+  +tick: U32, +actor: Model.ActorId, +target: Model.ActorId,
+  +recovery: U32, +cooldown: U32, +recoil: Nat, +sequence: Nat,
+  remaining: List<&2, Model.BattleEvent>, +reservation: SourceReservation
+) -> RuntimeAdvanceResult:
+  match event:
+    case RuntimeMiss{source, event_target, draw}:
+      reducer_commit(original, rng,
+        Sources.charge_source(reservation_source(reservation),
+          reservation_move(reservation), U32.add(tick, cooldown),
+          runtime_sources(original)),
+        remove_queued(sequence, runtime_reservations(original)),
+        runtime_failed(original), [event],
+        Reducer.valid_action(runtime_battle(original), tick, actor, target,
+          recovery, 0, 0n, 0n, remaining))
+    case RuntimeNoDamage{source, event_target, critical}:
+      reducer_commit(original, rng,
+        Sources.charge_source(reservation_source(reservation),
+          reservation_move(reservation), U32.add(tick, cooldown),
+          runtime_sources(original)),
+        remove_queued(sequence, runtime_reservations(original)),
+        runtime_failed(original), [event],
+        Reducer.valid_action(runtime_battle(original), tick, actor, target,
+          recovery, 0, 0n, 0n, remaining))
+    case RuntimeHit{source, event_target, +damage, critical}:
+      reducer_commit(original, rng,
+        Sources.charge_source(reservation_source(reservation),
+          reservation_move(reservation), U32.add(tick, cooldown),
+          runtime_sources(original)),
+        remove_queued(sequence, runtime_reservations(original)),
+        runtime_failed(original), [event],
+        Reducer.valid_action(runtime_battle(original), tick, actor, target,
+          recovery, 0, U32.to_nat(damage), recoil, remaining))
+    case _:
+      RuntimeFault{original}
+
+def resolved_move(
+  result: ActionResult, +original: RuntimeState, +tick: U32,
+  +actor: Model.ActorId, +target: Model.ActorId, +recovery: U32,
+  +cooldown: U32, +recoil: Nat, +sequence: Nat,
+  remaining: List<&2, Model.BattleEvent>, +reservation: SourceReservation
+) -> RuntimeAdvanceResult:
+  match result:
+    case ActionCommitted{rng, event}:
+      commit_action_event(event, original, rng, tick, actor, target, recovery,
+        cooldown, recoil, sequence, remaining, reservation)
+    case _:
+      RuntimeFault{original}
+
+def defender_move(
+  found: Maybe<&2, CombatProfile>, attacker: CombatProfile,
+  +reservation: SourceReservation, +original: RuntimeState, +tick: U32,
+  +actor: Model.ActorId, +target: Model.ActorId, +recovery: U32,
+  +cooldown: U32, +recoil: Nat, +sequence: Nat,
+  remaining: List<&2, Model.BattleEvent>
+) -> RuntimeAdvanceResult:
+  match found:
+    case None{}:
+      RuntimeFault{original}
+    case Some{defender}:
+      resolved_move(resolve_profile(reservation, runtime_rng(original),
+          combine_profiles(attacker, defender)), original, tick, actor, target,
+        recovery, cooldown, recoil, sequence, remaining, reservation)
+
+def target_move(
+  valid: Bool, attacker: CombatProfile, +reservation: SourceReservation,
+  +original: RuntimeState, +tick: U32, +actor: Model.ActorId,
+  +target: Model.ActorId, +recovery: U32, +cooldown: U32, +recoil: Nat,
+  +sequence: Nat, remaining: List<&2, Model.BattleEvent>
+) -> RuntimeAdvanceResult:
+  match valid:
+    case False{}:
+      fizzle_move(original, tick, actor, target, recovery, cooldown, sequence,
+        remaining, reservation)
+    case True{}:
+      defender_move(find_defender(target, runtime_defenders(original)), attacker,
+        reservation, original, tick, actor, target, recovery, cooldown, recoil,
+        sequence, remaining)
+
+def target_actor_move(
+  found: Maybe<&2, Model.Actor>, actor_state: Model.Actor,
+  attacker: CombatProfile, +reservation: SourceReservation,
+  +original: RuntimeState, +tick: U32, +actor: Model.ActorId,
+  +target: Model.ActorId, +recovery: U32, +cooldown: U32, +recoil: Nat,
+  +sequence: Nat, remaining: List<&2, Model.BattleEvent>
+) -> RuntimeAdvanceResult:
+  match found:
+    case None{}:
+      fizzle_move(original, tick, actor, target, recovery, cooldown, sequence,
+        remaining, reservation)
+    case Some{+target_state}:
+      target_move(Scheduler.target_ok(actor_state, target_state), attacker,
+        reservation, original, tick, actor, target, recovery, cooldown, recoil,
+        sequence, remaining)
+
+def actor_ready_move(
+  ready: Bool, actor_state: Model.Actor, attacker: CombatProfile,
+  +reservation: SourceReservation, +original: RuntimeState, +tick: U32,
+  +actor: Model.ActorId, +target: Model.ActorId, +recovery: U32,
+  +cooldown: U32, +recoil: Nat, +sequence: Nat,
+  remaining: List<&2, Model.BattleEvent>
+) -> RuntimeAdvanceResult:
+  match ready:
+    case False{}:
+      cancel_move(original, tick, actor, target, sequence, remaining,
+        reservation)
+    case True{}:
+      target_actor_move(Scheduler.find_actor(target,
+          Reducer.state_actors(runtime_battle(original))), actor_state, attacker,
+        reservation, original, tick, actor, target, recovery, cooldown, recoil,
+        sequence, remaining)
+
+def actor_move(
+  found: Maybe<&2, Model.Actor>, attacker: CombatProfile,
+  +reservation: SourceReservation, +original: RuntimeState, +tick: U32,
+  +actor: Model.ActorId, +target: Model.ActorId, +recovery: U32,
+  +cooldown: U32, +recoil: Nat, +sequence: Nat,
+  remaining: List<&2, Model.BattleEvent>
+) -> RuntimeAdvanceResult:
+  match found:
+    case None{}:
+      cancel_move(original, tick, actor, target, sequence, remaining,
+        reservation)
+    case Some{+actor_state}:
+      actor_ready_move(Reducer.actor_can_execute(actor_state), actor_state,
+        attacker, reservation, original, tick, actor, target, recovery,
+        cooldown, recoil, sequence, remaining)
+
+def execute_queued_move(
+  +reservation: SourceReservation, attacker: CombatProfile,
+  +original: RuntimeState, +tick: U32, +actor: Model.ActorId,
+  +target: Model.ActorId, +recovery: U32, +cooldown: U32, +recoil: Nat,
+  +sequence: Nat, remaining: List<&2, Model.BattleEvent>
+) -> RuntimeAdvanceResult:
+  actor_move(Scheduler.find_actor(actor,
+      Reducer.state_actors(runtime_battle(original))), attacker, reservation,
+    original, tick, actor, target, recovery, cooldown, recoil, sequence,
+    remaining)
+
+def utility_failure(
+  +original: RuntimeState, +tick: U32, +actor: Model.ActorId,
+  +target: Model.ActorId, +recovery: U32, +sequence: Nat,
+  remaining: List<&2, Model.BattleEvent>
+) -> RuntimeAdvanceResult:
+  reducer_commit(original, runtime_rng(original), runtime_sources(original),
+    remove_queued(sequence, runtime_reservations(original)),
+    runtime_failed(original), Nil{},
+    Reducer.valid_action(runtime_battle(original), tick, actor, target,
+      recovery, 0, 0n, 0n, remaining))
+
+def switch_transition_battle(
+  battle: Model.BattleState, +original: RuntimeState, +tick: U32, +actor: Model.ActorId,
+  +incoming: Model.ActorId, +recovery: U32, +sequence: Nat,
+  remaining: List<&2, Model.BattleEvent>
+) -> RuntimeAdvanceResult:
+  match battle:
+    case Model.BattleState{now, wait_ticks, actors, events, +next_sequence,
+        status}:
+      +ready_tick = U32.add(tick, recovery)
+      +switched = Participants.apply_switch(actor, incoming, actors)
+      +recovering = Reducer.set_recovery(incoming, ready_tick, 0, switched)
+      reducer_commit(original, runtime_rng(original), runtime_sources(original),
+        remove_queued(sequence, runtime_reservations(original)),
+        runtime_failed(original), Nil{},
+        Reducer.finish_action(Reducer.battle_status(recovering), tick,
+          wait_ticks, recovering, remaining, next_sequence,
+          Model.BattleActorSwitched{actor, incoming},
+          Reducer.schedule_ready(tick, incoming, recovery, next_sequence)))
+
+def switch_transition(
+  +original: RuntimeState, +tick: U32, +actor: Model.ActorId,
+  +incoming: Model.ActorId, +recovery: U32, +sequence: Nat,
+  remaining: List<&2, Model.BattleEvent>
+) -> RuntimeAdvanceResult:
+  switch_transition_battle(runtime_battle(original), original, tick, actor,
+    incoming, recovery, sequence, remaining)
+
+def incoming_switch_ok(
+  outgoing: Model.Actor, incoming: Model.Actor
+) -> Bool:
+  match outgoing incoming:
+    case Model.Actor{out_id, out_side, out_hp, out_speed, out_phase, out_cd}
+        Model.Actor{in_id, in_side, 0n, in_speed, in_phase, in_cd}:
+      False{}
+    case Model.Actor{out_id, out_side, out_hp, out_speed, out_phase, out_cd}
+        Model.Actor{in_id, in_side, 1n+in_hp, in_speed, Model.Benched{}, in_cd}:
+      Participants.same_side(out_side, in_side)
+    case _ _:
+      False{}
+
+def switch_incoming_ok(
+  valid: Bool, +original: RuntimeState, +tick: U32,
+  +actor: Model.ActorId, +incoming: Model.ActorId, +recovery: U32,
+  +sequence: Nat, remaining: List<&2, Model.BattleEvent>
+) -> RuntimeAdvanceResult:
+  match valid:
+    case True{}:
+      switch_transition(original, tick, actor, incoming, recovery, sequence,
+        remaining)
+    case False{}:
+      utility_failure(original, tick, actor, incoming, recovery, sequence,
+        remaining)
+
+def switch_incoming(
+  found: Maybe<&2, Model.Actor>, outgoing: Model.Actor,
+  +original: RuntimeState, +tick: U32, +actor: Model.ActorId,
+  +incoming: Model.ActorId, +recovery: U32, +sequence: Nat,
+  remaining: List<&2, Model.BattleEvent>
+) -> RuntimeAdvanceResult:
+  match found:
+    case None{}:
+      utility_failure(original, tick, actor, incoming, recovery, sequence,
+        remaining)
+    case Some{incoming_actor}:
+      switch_incoming_ok(incoming_switch_ok(outgoing, incoming_actor), original,
+        tick, actor, incoming, recovery, sequence, remaining)
+
+def switch_actor_ready(
+  ready: Bool, outgoing: Model.Actor, +original: RuntimeState, +tick: U32,
+  +actor: Model.ActorId, +incoming: Model.ActorId, +recovery: U32,
+  +sequence: Nat, remaining: List<&2, Model.BattleEvent>
+) -> RuntimeAdvanceResult:
+  match ready:
+    case False{}:
+      reducer_commit(original, runtime_rng(original), runtime_sources(original),
+        remove_queued(sequence, runtime_reservations(original)),
+        runtime_failed(original), Nil{},
+        Reducer.cancelled_transition(runtime_battle(original), tick, actor,
+          remaining))
+    case True{}:
+      switch_incoming(Scheduler.find_actor(incoming,
+          Reducer.state_actors(runtime_battle(original))), outgoing, original,
+        tick, actor, incoming, recovery, sequence, remaining)
+
+def switch_actor(
+  found: Maybe<&2, Model.Actor>, +original: RuntimeState, +tick: U32,
+  +actor: Model.ActorId, +incoming: Model.ActorId, +recovery: U32,
+  +sequence: Nat, remaining: List<&2, Model.BattleEvent>
+) -> RuntimeAdvanceResult:
+  match found:
+    case None{}:
+      reducer_commit(original, runtime_rng(original), runtime_sources(original),
+        remove_queued(sequence, runtime_reservations(original)),
+        runtime_failed(original), Nil{},
+        Reducer.cancelled_transition(runtime_battle(original), tick, actor,
+          remaining))
+    case Some{+outgoing}:
+      switch_actor_ready(Reducer.actor_can_execute(outgoing), outgoing, original,
+        tick, actor, incoming, recovery, sequence, remaining)
+
+def execute_switch(
+  +original: RuntimeState, +tick: U32, +actor: Model.ActorId,
+  +incoming: Model.ActorId, +recovery: U32, +sequence: Nat,
+  remaining: List<&2, Model.BattleEvent>
+) -> RuntimeAdvanceResult:
+  switch_actor(Scheduler.find_actor(actor,
+      Reducer.state_actors(runtime_battle(original))), original, tick, actor,
+    incoming, recovery, sequence, remaining)
+
+def escape_success_battle(
+  battle_state: Model.BattleState, +original: RuntimeState,
+  +rng: Rng.RngState, +tick: U32,
+  +actor: Model.ActorId, +sequence: Nat,
+  remaining: List<&2, Model.BattleEvent>
+) -> RuntimeAdvanceResult:
+  match battle_state:
+    case Model.BattleState{now, wait_ticks, actors, events, next_sequence,
+        status}:
+      +battle = {Model.BattleState{tick, wait_ticks, actors, Nil{},
+        next_sequence, Model.Escaped{}} : Model.BattleState}
+      RuntimeStep{runtime_update(original, battle, rng,
+        runtime_failed(original), runtime_sources(original),
+        remove_queued(sequence, runtime_reservations(original))),
+        [Model.BattleEscapeSucceeded{actor},
+         Model.BattleCompleted{Model.Escaped{}, tick},
+         Model.BattlePendingDiscarded{
+           List.length(&2, Model.BattleEvent, remaining)}], Nil{}}
+
+def escape_success(
+  +original: RuntimeState, +rng: Rng.RngState, +tick: U32,
+  +actor: Model.ActorId, +sequence: Nat,
+  remaining: List<&2, Model.BattleEvent>
+) -> RuntimeAdvanceResult:
+  escape_success_battle(runtime_battle(original), original, rng, tick, actor,
+    sequence, remaining)
+
+def escape_failure_battle(
+  battle_state: Model.BattleState, +original: RuntimeState,
+  +rng: Rng.RngState, +failed: U32, +tick: U32,
+  +actor: Model.ActorId, +recovery: U32, +sequence: Nat,
+  remaining: List<&2, Model.BattleEvent>
+) -> RuntimeAdvanceResult:
+  match battle_state:
+    case Model.BattleState{now, wait_ticks, actors, events, +next_sequence,
+        status}:
+      +ready_tick = U32.add(tick, recovery)
+      +recovering = Reducer.set_recovery(actor, ready_tick, 0, actors)
+      reducer_commit(original, rng, runtime_sources(original),
+        remove_queued(sequence, runtime_reservations(original)), failed, Nil{},
+        Reducer.finish_action(Reducer.battle_status(recovering), tick,
+          wait_ticks, recovering, remaining, next_sequence,
+          Model.BattleEscapeFailed{actor},
+          Reducer.schedule_ready(tick, actor, recovery, next_sequence)))
+
+def escape_failure(
+  +original: RuntimeState, +rng: Rng.RngState, +failed: U32, +tick: U32,
+  +actor: Model.ActorId, +recovery: U32, +sequence: Nat,
+  remaining: List<&2, Model.BattleEvent>
+) -> RuntimeAdvanceResult:
+  escape_failure_battle(runtime_battle(original), original, rng, failed, tick,
+    actor, recovery, sequence, remaining)
+
+def escape_result_commit(
+  result: EscapeResult, +original: RuntimeState, +tick: U32,
+  +actor: Model.ActorId, +recovery: U32, +sequence: Nat,
+  remaining: List<&2, Model.BattleEvent>
+) -> RuntimeAdvanceResult:
+  match result:
+    case EscapeSucceeded{rng}:
+      escape_success(original, rng, tick, actor, sequence, remaining)
+    case EscapeFailed{rng, failed}:
+      escape_failure(original, rng, failed, tick, actor, recovery, sequence,
+        remaining)
+    case _:
+      RuntimeFault{original}
+
+def execute_escape_ready(
+  ready: Bool, +original: RuntimeState, +tick: U32, +actor: Model.ActorId,
+  +recovery: U32, +sequence: Nat, +player_speed: U32, +enemy_speed: U32,
+  remaining: List<&2, Model.BattleEvent>
+) -> RuntimeAdvanceResult:
+  match ready:
+    case False{}:
+      reducer_commit(original, runtime_rng(original), runtime_sources(original),
+        remove_queued(sequence, runtime_reservations(original)),
+        runtime_failed(original), Nil{},
+        Reducer.cancelled_transition(runtime_battle(original), tick, actor,
+          remaining))
+    case True{}:
+      match original:
+        case RuntimeState{battle, rng, encounter, failed, sources, reservations,
+            trapped, defenders}:
+          escape_result_commit(escape_attempt(encounter, rng, failed,
+            player_speed, enemy_speed), original, tick, actor, recovery,
+            sequence, remaining)
+
+def execute_escape_actor(
+  found: Maybe<&2, Model.Actor>, +original: RuntimeState, +tick: U32,
+  +actor: Model.ActorId, +recovery: U32, +sequence: Nat,
+  +player_speed: U32, +enemy_speed: U32,
+  remaining: List<&2, Model.BattleEvent>
+) -> RuntimeAdvanceResult:
+  match found:
+    case None{}:
+      reducer_commit(original, runtime_rng(original), runtime_sources(original),
+        remove_queued(sequence, runtime_reservations(original)),
+        runtime_failed(original), Nil{},
+        Reducer.cancelled_transition(runtime_battle(original), tick, actor,
+          remaining))
+    case Some{+actor_state}:
+      execute_escape_ready(Reducer.actor_can_execute(actor_state), original,
+        tick, actor, recovery, sequence, player_speed, enemy_speed, remaining)
+
+def execute_escape(
+  +original: RuntimeState, +tick: U32, +actor: Model.ActorId,
+  +recovery: U32, +sequence: Nat, +player_speed: U32, +enemy_speed: U32,
+  remaining: List<&2, Model.BattleEvent>
+) -> RuntimeAdvanceResult:
+  execute_escape_actor(Scheduler.find_actor(actor,
+      Reducer.state_actors(runtime_battle(original))), original, tick, actor,
+    recovery, sequence, player_speed, enemy_speed, remaining)
+
+def reducer_step_runtime(+original: RuntimeState) -> RuntimeAdvanceResult:
+  reducer_commit(original, runtime_rng(original), runtime_sources(original),
+    runtime_reservations(original), runtime_failed(original), Nil{},
+    Reducer.step(runtime_battle(original)))
+
+def execute_move_queued(
+  queued: QueuedReservation, +original: RuntimeState, +tick: U32,
+  +actor: Model.ActorId, +target: Model.ActorId, +recovery: U32,
+  +cooldown: U32, +recoil: Nat, +sequence: Nat,
+  remaining: List<&2, Model.BattleEvent>
+) -> RuntimeAdvanceResult:
+  match queued:
+    case QueuedMove{queued_seq, reservation, attacker}:
+      execute_queued_move(reservation, attacker, original, tick, actor, target,
+        recovery, cooldown, recoil, sequence, remaining)
+    case _:
+      RuntimeFault{original}
+
+def execute_move_found(
+  found: Maybe<&2, QueuedReservation>, +original: RuntimeState, +tick: U32,
+  +actor: Model.ActorId, +target: Model.ActorId, +recovery: U32,
+  +cooldown: U32, +recoil: Nat, +sequence: Nat,
+  remaining: List<&2, Model.BattleEvent>
+) -> RuntimeAdvanceResult:
+  match found:
+    case None{}:
+      reducer_step_runtime(original)
+    case Some{queued}:
+      execute_move_queued(queued, original, tick, actor, target, recovery,
+        cooldown, recoil, sequence, remaining)
+
+def execute_switch_queued(
+  queued: QueuedReservation, +original: RuntimeState, +tick: U32,
+  +actor: Model.ActorId, +target: Model.ActorId, +recovery: U32,
+  +sequence: Nat, remaining: List<&2, Model.BattleEvent>
+) -> RuntimeAdvanceResult:
+  match queued:
+    case QueuedSwitch{queued_seq, source, incoming}:
+      execute_switch(original, tick, actor, incoming, recovery, sequence,
+        remaining)
+    case QueuedEscape{queued_seq, source, player_speed, enemy_speed}:
+      execute_escape(original, tick, actor, recovery, sequence, player_speed,
+        enemy_speed, remaining)
+    case _:
+      RuntimeFault{original}
+
+def execute_utility_found(
+  found: Maybe<&2, QueuedReservation>, +original: RuntimeState, +tick: U32,
+  +actor: Model.ActorId, +target: Model.ActorId, +recovery: U32,
+  +sequence: Nat, remaining: List<&2, Model.BattleEvent>
+) -> RuntimeAdvanceResult:
+  match found:
+    case None{}:
+      RuntimeFault{original}
+    case Some{queued}:
+      execute_switch_queued(queued, original, tick, actor, target, recovery,
+        sequence, remaining)
+
+def runtime_step_event(
+  event: Model.BattleEvent, +original: RuntimeState,
+  remaining: List<&2, Model.BattleEvent>
+) -> RuntimeAdvanceResult:
+  match event:
+    case Model.ReadyEvent{key, actor}:
+      reducer_step_runtime(original)
+    case Model.ExecuteEvent{Model.EventKey{+tick, phase, priority, speed,
+        key_actor, +sequence, ordinal}, actor, target, +recovery, +cooldown,
+        damage, +recoil}:
+      execute_move_found(find_queued(sequence,
+          runtime_reservations(original)), original, tick, actor, target,
+        recovery, cooldown, recoil, sequence, remaining)
+    case Model.UtilityEvent{Model.EventKey{+tick, phase, priority, speed,
+        key_actor, +sequence, ordinal}, actor, target, +recovery}:
+      execute_utility_found(find_queued(sequence,
+          runtime_reservations(original)), original, tick, actor, target,
+        recovery, sequence, remaining)
+
+def driver_runtime(
+  result: Driver.DriveResult, +original: RuntimeState
+) -> RuntimeAdvanceResult:
+  match result:
+    case Driver.DriveBoundary{battle, emitted}:
+      RuntimeStep{runtime_update(original, battle, runtime_rng(original),
+        runtime_failed(original), runtime_sources(original),
+        runtime_reservations(original)), emitted, Nil{}}
+    case Driver.DriveTerminal{battle, emitted}:
+      RuntimeStep{runtime_update(original, battle, runtime_rng(original),
+        runtime_failed(original), runtime_sources(original),
+        runtime_reservations(original)), emitted, Nil{}}
+    case Driver.DriveStalled{battle, emitted}:
+      RuntimeStep{runtime_update(original, battle, runtime_rng(original),
+        runtime_failed(original), runtime_sources(original),
+        runtime_reservations(original)), emitted, Nil{}}
+    case Driver.DriveYielded{battle, emitted}:
+      RuntimeIdle{runtime_update(original, battle, runtime_rng(original),
+        runtime_failed(original), runtime_sources(original),
+        runtime_reservations(original))}
+
+def runtime_boundary_state(+original: RuntimeState) -> RuntimeAdvanceResult:
+  +battle = Driver.with_status(runtime_battle(original),
+    Model.AwaitingCommands{})
+  RuntimeStep{runtime_update(original, battle, runtime_rng(original),
+    runtime_failed(original), runtime_sources(original),
+    runtime_reservations(original)), Nil{}, Nil{}}
+
+def runtime_future_ready(
+  ready: List<&2, Model.ActorId>, event: Model.BattleEvent,
+  +original: RuntimeState, remaining: List<&2, Model.BattleEvent>
+) -> RuntimeAdvanceResult:
+  match ready:
+    case Nil{}:
+      runtime_step_event(event, original, remaining)
+    case actor <> rest:
+      runtime_boundary_state(original)
+
+def runtime_due_future(
+  future: Bool, event: Model.BattleEvent, +original: RuntimeState,
+  remaining: List<&2, Model.BattleEvent>
+) -> RuntimeAdvanceResult:
+  match future:
+    case False{}:
+      runtime_step_event(event, original, remaining)
+    case True{}:
+      runtime_future_ready(Scheduler.collect_ready_ids(
+          Reducer.state_actors(runtime_battle(original))), event, original,
+        remaining)
+
+def runtime_due_valid(
+  valid: Bool, +due: U32, event: Model.BattleEvent,
+  +original: RuntimeState, remaining: List<&2, Model.BattleEvent>
+) -> RuntimeAdvanceResult:
+  match valid:
+    case False{}:
+      driver_runtime(Driver.run(runtime_battle(original), 1n), original)
+    case True{}:
+      runtime_due_future(U32.is_gt(due, runtime_now(original)), event,
+        original, remaining)
+
+def runtime_step_events(
+  events: List<&2, Model.BattleEvent>, +original: RuntimeState
+) -> RuntimeAdvanceResult:
+  match events:
+    case Nil{}:
+      driver_runtime(Driver.run(runtime_battle(original), 1n), original)
+    case +event <> rest:
+      +due = Reducer.event_due(event)
+      runtime_due_valid(U32.is_le(due, 216000), due, event, original, rest)
+
+def runtime_step(+original: RuntimeState) -> RuntimeAdvanceResult:
+  match original:
+    case RuntimeState{+battle, rng, encounter, failed, sources, reservations,
+        trapped, defenders}:
+      match battle:
+        case Model.BattleState{now, wait_ticks, actors, +events, sequence,
+            status}:
+          runtime_step_events(events, original)
+
+type RuntimeRunResult is Data:
+  RuntimeRunBoundary{
+    state: RuntimeState,
+    emitted: List<&2, Model.TransitionEvent>,
+    combat_events: List<&2, RuntimeEvent>
+  }
+  RuntimeRunTerminal{
+    state: RuntimeState,
+    emitted: List<&2, Model.TransitionEvent>,
+    combat_events: List<&2, RuntimeEvent>
+  }
+  RuntimeRunStalled{
+    state: RuntimeState,
+    emitted: List<&2, Model.TransitionEvent>,
+    combat_events: List<&2, RuntimeEvent>
+  }
+  RuntimeRunYielded{
+    state: RuntimeState,
+    emitted: List<&2, Model.TransitionEvent>,
+    combat_events: List<&2, RuntimeEvent>
+  }
+  RuntimeRunFault{state: RuntimeState}
+
+type RuntimeCursor is Data:
+  RuntimeCursorActive{
+    state: RuntimeState,
+    emitted: List<&2, Model.TransitionEvent>,
+    combat_events: List<&2, RuntimeEvent>
+  }
+  RuntimeCursorBoundary{
+    state: RuntimeState,
+    emitted: List<&2, Model.TransitionEvent>,
+    combat_events: List<&2, RuntimeEvent>
+  }
+  RuntimeCursorTerminal{
+    state: RuntimeState,
+    emitted: List<&2, Model.TransitionEvent>,
+    combat_events: List<&2, RuntimeEvent>
+  }
+  RuntimeCursorStalled{
+    state: RuntimeState,
+    emitted: List<&2, Model.TransitionEvent>,
+    combat_events: List<&2, RuntimeEvent>
+  }
+  RuntimeCursorFault{state: RuntimeState}
+
+def runtime_status(state: RuntimeState) -> Model.BattleStatus:
+  match state:
+    case RuntimeState{battle, rng, encounter, failed, sources, reservations,
+        trapped, defenders}:
+      match battle:
+        case Model.BattleState{now, wait_ticks, actors, events, sequence,
+            status}:
+          status
+
+def runtime_cursor_status(
+  status: Model.BattleStatus, state: RuntimeState,
+  emitted: List<&2, Model.TransitionEvent>,
+  combat_events: List<&2, RuntimeEvent>
+) -> RuntimeCursor:
+  match status:
+    case Model.AwaitingCommands{}:
+      RuntimeCursorBoundary{state, emitted, combat_events}
+    case Model.Victory{}:
+      RuntimeCursorTerminal{state, emitted, combat_events}
+    case Model.Defeat{}:
+      RuntimeCursorTerminal{state, emitted, combat_events}
+    case Model.Draw{}:
+      RuntimeCursorTerminal{state, emitted, combat_events}
+    case Model.Timeout{}:
+      RuntimeCursorTerminal{state, emitted, combat_events}
+    case Model.Escaped{}:
+      RuntimeCursorTerminal{state, emitted, combat_events}
+    case Model.SchedulerStalled{}:
+      RuntimeCursorStalled{state, emitted, combat_events}
+    case Model.Advancing{}:
+      RuntimeCursorActive{state, emitted, combat_events}
+
+def runtime_after_step(
+  prior_emitted: List<&2, Model.TransitionEvent>,
+  prior_combat: List<&2, RuntimeEvent>, result: RuntimeAdvanceResult
+) -> RuntimeCursor:
+  match result:
+    case RuntimeStep{+state, emitted, combat_events}:
+      runtime_cursor_status(runtime_status(state), state,
+        List.append(&2, Model.TransitionEvent, prior_emitted, emitted),
+        List.append(&2, RuntimeEvent, prior_combat, combat_events))
+    case RuntimeIdle{state}:
+      RuntimeCursorActive{state, prior_emitted, prior_combat}
+    case RuntimeFault{state}:
+      RuntimeCursorFault{state}
+
+def runtime_run_one(cursor: RuntimeCursor, ignored: Nat) -> RuntimeCursor:
+  match cursor:
+    case RuntimeCursorActive{state, emitted, combat_events}:
+      runtime_after_step(emitted, combat_events, runtime_step(state))
+    case RuntimeCursorBoundary{state, emitted, combat_events}:
+      RuntimeCursorBoundary{state, emitted, combat_events}
+    case RuntimeCursorTerminal{state, emitted, combat_events}:
+      RuntimeCursorTerminal{state, emitted, combat_events}
+    case RuntimeCursorStalled{state, emitted, combat_events}:
+      RuntimeCursorStalled{state, emitted, combat_events}
+    case RuntimeCursorFault{state}:
+      RuntimeCursorFault{state}
+
+def runtime_run_result(cursor: RuntimeCursor) -> RuntimeRunResult:
+  match cursor:
+    case RuntimeCursorActive{state, emitted, combat_events}:
+      RuntimeRunYielded{state, emitted, combat_events}
+    case RuntimeCursorBoundary{state, emitted, combat_events}:
+      RuntimeRunBoundary{state, emitted, combat_events}
+    case RuntimeCursorTerminal{state, emitted, combat_events}:
+      RuntimeRunTerminal{state, emitted, combat_events}
+    case RuntimeCursorStalled{state, emitted, combat_events}:
+      RuntimeRunStalled{state, emitted, combat_events}
+    case RuntimeCursorFault{state}:
+      RuntimeRunFault{state}
+
+def runtime_run(+fuel: Nat, state: RuntimeState) -> RuntimeRunResult:
+  runtime_run_result(List.foldl(~&2, ~Nat, ~RuntimeCursor, ~runtime_run_one,
+    List.range(fuel), RuntimeCursorActive{state, Nil{}, Nil{}}))

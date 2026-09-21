@@ -29,15 +29,15 @@ Guide-derived constraints to test: array indices wrap, so validation must preced
 
 Read `bend guide`, relevant subguides and Base/library definitions completely after installation and before any Bend code. This turn writes no Bend code, so it does not attempt to bypass that requirement using remembered or upstream-only syntax.
 
-## Proposed target matrix
+## Approved initial target matrix
 
-Linux x86_64 CPU is the first candidate, not a verified supported release. macOS CPU/Metal and browser/JS are investigation targets. Windows and Linux GPU are deferred until explicit toolchain/runtime/driver validation. Benchmark GPU only after CPU correctness and workload measurement; CPU-only operation must remain possible. Evaluate existing host graphics/audio APIs against a narrow C or JS adapter rather than building a renderer first.
+Linux x86_64 CPU is the first supported release target, subject to the release gates. The browser/JavaScript shell is the approved maker host. Windows x64 and macOS arm64 remain validation targets rather than supported initial releases. GPU acceleration is optional and stays behind CPU correctness and workload measurement; CPU-only operation is mandatory. Packaged games use the approved narrow native C/SDL3 adapter unless the recorded feasibility work forces a versioned replacement.
 
 ## Top technical risks
 
 1. Missing/new toolchain and evolving proof/ABI behavior: pin revision and run positive/negative gates before domain commitment (Astra/Sol, M0).
 2. Proof model diverges from production arithmetic or FFI values: refinement obligations and hostile-boundary tests (Astra/Sol, M1 onward).
-3. Timeline ties, cancellation and cooldown rules create incompatible replays: owner decisions and versioned golden traces before M3 (Astra).
+3. Timeline ties, cancellation and cooldown rules create incompatible replays: the owner decisions are now fixed; preserve them with the M3 versioned golden traces (Astra).
 4. Closed content remains computationally dangerous: global budgets, no immediate cycles, decoder isolation and fuzzing (Sol, M2/M8/M12).
 5. Catalog parameters smuggle rules overrides: explicit permission matrix and unknown-field rejection (Astra/Sol, M2).
 6. Affine data copying / state history costs: representation spike and measured snapshots; no speculative parallel mutation (Sol, M0/M12).

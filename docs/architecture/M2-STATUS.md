@@ -29,4 +29,4 @@ The additive `REF-EMPTY` law proves only that the production reference helper re
 
 ## Remaining scope
 
-Content-0 deliberately omits moves, types, effects, items, recipes, trainers, dialogue, quests, executable event graphs and all battle formulas. Those require later additive schemas after their engine-owned semantics are approved. M3 cannot claim deterministic battle completion until timing, damage and RNG decisions have concrete approved values. Remote CI and live presentation/device gates listed in [M0-STATUS.md](M0-STATUS.md) also remain open.
+Content-0 deliberately omits moves, types, effects, items, recipes, trainers, dialogue, quests, executable event graphs and all battle formulas. Their engine-owned semantics are now approved, but they still require later additive schemas and implementations. M3 cannot claim deterministic battle completion until its reducer, fixtures, laws and replay evidence pass. Remote CI and live presentation/device gates listed in [M0-STATUS.md](M0-STATUS.md) also remain open.

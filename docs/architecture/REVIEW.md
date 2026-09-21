@@ -18,7 +18,7 @@ The reviewer confirmed coverage of requested product, domain/repository, schedul
 
 After rereading the revised scheduler, decisions and rule registry, the separate Astra reviewer returned **PASS for planning consistency**. All three findings were resolved and no further blocking inconsistency was identified.
 
-Owner decisions remain OPEN. This verdict does not establish compiler feasibility, checked proofs, milestone completion or authorization to implement the engine. There is no human acceptance of new laws or numerical rules in this review.
+Historical note: owner decisions were open when this review was written. The owner subsequently approved the R01–R13 and U01–U13 closures on 2026-09-21. This review still does not establish milestone completion or proof coverage; current authority is `docs/DECISIONS.md` and verified milestone status documents.
 
 ## Local document validation
 

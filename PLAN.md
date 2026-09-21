@@ -23,7 +23,7 @@ Build one content-agnostic, primarily Bend 2 engine with a deterministic headles
 | M12 Hardening / optimization | Fuzzing, resource caps, profiles, deterministic parallel workloads, load diagnostics | M11; security tests begin M2 | Sol; Luna generated corpora | Astra reviews invariants; measured CPU/GPU comparisons, no speculative GPU mandate |
 | M13 Original demonstration | Exploration, capture, trainer fight, multi-type, trained mix, harmony, quests/dialogue, progression, save/load | M12 | Luna original content; Sol integration | Astra final architecture review, IP/license inventory, full creator-to-runtime acceptance |
 
-All significant core implementations follow Astra specification → Sol implementation/tests/proofs → separate reviewer → Astra architecture-sensitive review. Luna may not author semantic changes. Work orders must use `docs/work-orders/TEMPLATE.md`; future milestones must be decomposed into bounded orders before work begins. `docs/work-orders/M0-FEASIBILITY.md` is the first proposed order, not an implementation performed in this turn.
+All significant core implementations follow Astra specification → Sol implementation/tests/proofs → separate reviewer → Astra architecture-sensitive review. Luna may not author semantic changes. Work orders must use `docs/work-orders/TEMPLATE.md`; future milestones must be decomposed into bounded orders before work begins. M0 and Content-0 have completed their documented local slices; M3 is decomposed in `docs/work-orders/M3-BATTLE.md`.
 
 ## Dependency graph
 
@@ -59,7 +59,7 @@ M0 precedes proof-dependent domain commitment. M1 drafting happens now; approval
 
 Workspace: `/home/luis/bend`, Linux x86_64. Only `AGENTS.md` existed before this package. `bend --version` and `bend guide` both returned command-not-found (exit 127). No `.bend` source or installed guide was found in the inspected locations. `git status` reports this is not a usable Git repository despite a read-only `.git` directory. No repository initialization, compiler installation, Bend source, executable schema, or engine was created.
 
-The missing-compiler condition above was resolved during implementation. Read `docs/architecture/M0-STATUS.md` for verified local results and remaining gates. Typed IDs and strict inert Content-0 validation are now implemented; read `docs/architecture/M2-STATUS.md`. The next gameplay milestone still depends on approved numerical timing, damage and RNG rules.
+The missing-compiler condition above was resolved during implementation. Read `docs/architecture/M0-STATUS.md` for verified local results and remaining gates. Typed IDs and strict inert Content-0 validation are now implemented; read `docs/architecture/M2-STATUS.md`. Timing, damage and RNG rules are approved, so the next gameplay work is the M3 reducer and replay harness.
 
 ## Completion policy
 

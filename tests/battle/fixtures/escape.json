@@ -1,0 +1,13 @@
+{
+  "fixture_version": "m3-fixtures-1",
+  "id": "escape",
+  "kind": "escape",
+  "description": "A legal wild encounter escape succeeds atomically and yields no rewards.",
+  "initial_state": {"tick": 840, "ready_actor_ids": ["actor-01"], "encounter": "wild", "rng_state": [33, 34, 35, 36]},
+  "commands": [{"actor_id": "actor-01", "choice": "escape", "fastest_player_speed": 120, "fastest_enemy_speed": 80, "prior_failed_escapes": 0}],
+  "expected": {"result": "Escaped", "rng_draws": 1, "events": [
+    {"type": "escape-attempted", "chance": 6000},
+    {"type": "battle-completed", "outcome": "Escaped"},
+    {"type": "rewards-granted", "xp": 0, "currency": 0, "items": 0}
+  ]}
+}

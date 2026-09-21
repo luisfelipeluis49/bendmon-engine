@@ -92,11 +92,15 @@ def main():
     (EVIDENCE / 'artifact-hashes.json').write_text(json.dumps(hashes, indent=2) + '\n')
     run('native content kernel build', ['bend', 'platform/content/kernel.bend', '-o', BUILD / 'content-kernel'])
     run('content kernel and loader regression suite', [sys.executable, '-m', 'unittest', 'discover', '-s', 'tests/content', '-p', 'test_*.py', '-v'], timeout=180)
+    run('generated XP table is current', [sys.executable, 'scripts/generate_xp_table.py', '--check'])
+    run('rules regression suite', [sys.executable, '-m', 'unittest', 'discover', '-s', 'tests/rules', '-p', 'test_*.py', '-v'])
+    run('battle fixture regression suite', [sys.executable, '-m', 'unittest', 'discover', '-s', 'tests/battle', '-p', 'test_*.py', '-v'])
+    run('persistence boundary regression suite', [sys.executable, '-m', 'unittest', 'discover', '-s', 'tests/persistence', '-p', 'test_*.py', '-v'])
     result = run('original project loads through Bend', [sys.executable, 'scripts/validate_project.py', 'examples/original-demo'])
     loaded = json.loads(result.stdout)
     assert loaded['ok'] is True and len(loaded['contentHash']) == 64
     (EVIDENCE / 'content-project.json').write_text(json.dumps(loaded, indent=2) + '\n')
-    print(f'PASS: {len(RESULTS)} checks; laws, native/JS boundaries, CPU parallelism, presentation and content.')
+    print(f'PASS: {len(RESULTS)} checks; laws, native/JS boundaries, CPU parallelism, presentation, content and milestone fixtures.')
 
 
 if __name__ == '__main__':
@@ -107,4 +111,4 @@ if __name__ == '__main__':
         sys.exit(1)
     finally:
         EVIDENCE.mkdir(parents=True, exist_ok=True)
-        (EVIDENCE / 'verification.json').write_text(json.dumps({'checks': RESULTS, 'scope': 'M0 feasibility and content-0 loading; not gameplay verification'}, indent=2) + '\n')
+        (EVIDENCE / 'verification.json').write_text(json.dumps({'checks': RESULTS, 'scope': 'foundation, content-0 loading and milestone support artifacts; not full gameplay verification'}, indent=2) + '\n')

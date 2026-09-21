@@ -1,0 +1,16 @@
+{
+  "fixture_version": "m3-fixtures-1",
+  "id": "zero-windup-ordering",
+  "kind": "ordering",
+  "description": "Zero-windup executions queue after the whole batch and use the event key.",
+  "initial_state": {"tick": 240, "ready_actor_ids": ["actor-01", "actor-02"], "rng_state": [5, 6, 7, 8]},
+  "commands": [
+    {"actor_id": "actor-01", "choice": "move", "move_id": "move-priority-1", "target_id": "actor-03", "windup": 0, "priority": 1, "speed": 90, "action_sequence": 2},
+    {"actor_id": "actor-02", "choice": "move", "move_id": "move-priority-0", "target_id": "actor-03", "windup": 0, "priority": 0, "speed": 120, "action_sequence": 1}
+  ],
+  "expected": {"result": "terminal-after-execution", "rng_draws": 2, "events": [
+    {"type": "execution-queued", "due_tick": 240, "order": "phase-then-priority-then-speed-then-actor-id"},
+    {"type": "action-executed", "actor_id": "actor-01", "reason": "higher-priority"},
+    {"type": "action-skipped", "actor_id": "actor-02", "reason": "target-ko"}
+  ]}
+}

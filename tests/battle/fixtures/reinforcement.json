@@ -1,0 +1,13 @@
+{
+  "fixture_version": "m3-fixtures-1",
+  "id": "reinforcement",
+  "kind": "reinforcement",
+  "description": "A vacant active slot fills from the finite encounter roster before victory is evaluated.",
+  "initial_state": {"tick": 960, "ready_actor_ids": ["actor-01"], "active_ids": ["actor-01", "actor-02"], "roster_ids": ["actor-01", "actor-02", "actor-03"], "rng_state": [37, 38, 39, 40]},
+  "commands": [{"actor_id": "actor-01", "choice": "move", "move_id": "move-ko", "target_id": "actor-02", "windup": 0}],
+  "expected": {"result": "awaiting-next-barrier", "rng_draws": 0, "events": [
+    {"type": "action-executed", "actor_id": "actor-01"},
+    {"type": "reinforcement-arrived", "actor_id": "actor-03", "slot": 2, "order": "encounter-roster"},
+    {"type": "command-barrier-opened", "ready_actor_ids": ["actor-01", "actor-03"]}
+  ]}
+}

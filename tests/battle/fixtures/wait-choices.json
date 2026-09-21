@@ -1,0 +1,17 @@
+{
+  "fixture_version": "m3-fixtures-1",
+  "id": "wait-choices",
+  "kind": "wait",
+  "description": "Each engine-owned Wait choice advances readiness by exactly its selected duration.",
+  "initial_state": {"tick": 600, "ready_actor_ids": ["actor-01"], "rng_state": [25, 26, 27, 28]},
+  "commands": [
+    {"actor_id": "actor-01", "choice": "wait", "wait_ticks": 30},
+    {"actor_id": "actor-01", "choice": "wait", "wait_ticks": 60},
+    {"actor_id": "actor-01", "choice": "wait", "wait_ticks": 120}
+  ],
+  "expected": {"result": "three-independent-valid-choices", "rng_draws": 0, "events": [
+    {"type": "wait-scheduled", "wait_ticks": 30, "due_tick": 630},
+    {"type": "wait-scheduled", "wait_ticks": 60, "due_tick": 660},
+    {"type": "wait-scheduled", "wait_ticks": 120, "due_tick": 720}
+  ]}
+}

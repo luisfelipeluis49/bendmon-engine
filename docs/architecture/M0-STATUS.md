@@ -12,7 +12,7 @@ Status: local foundation implemented; full M0 exit remains pending remote CI and
 - Independent CPU fork/join computation produces identical output with 1, 2 and 4 threads.
 - Copied headless executable runs from a clean temporary directory without Bend on PATH. This demonstrates compiler independence on this host, not a full clean-machine portability test.
 - A pure Bend presentation snapshot projects into a developer-owned C effect. It emits an original sprite/depth PPM frame and a 180ms mono WAV. File structure, repeatability, invalid host bounds, mismatched snapshot tags, invalid arguments and symlink-output rejection pass. Artifact output uses exclusive temporary files and atomic replacement; a hard-link regression confirms unrelated linked files remain unchanged.
-- `python3 scripts/verify.py`: 93 checks pass. Machine-readable evidence and command logs are generated in `build/evidence/`; no committed build binaries are required.
+- `python3 scripts/verify.py`: 106 checks pass, including the generated XP table, M3 fixture corpus and canonical persistence boundary. Machine-readable evidence and command logs are generated in `build/evidence/`; no committed build binaries are required.
 
 ## Formal boundary
 
@@ -26,10 +26,10 @@ Native Nat representation is bounded by this compiler despite mathematical Nat t
 - Live X11 window/input and hardware sound have not been verified. ALSA headers are absent; the probe uses file-output effects instead. The C effect is a measured file-output bridge, not proof the final renderer/audio stack is ready.
 - JavaScript headless execution passes using Node; the presentation JS foreign effect deliberately returns an unsupported error. Browser renderer integration remains unimplemented.
 - macOS/Windows/GPU and fresh-machine distribution are not tested.
-- No project loader, battle kernel, progression, save system or maker UI exists yet. Approved nonnumerical choices are recorded in DECISIONS.md; numerical rules still need approval before mechanics implementation.
+- No battle kernel, progression runtime, save system or maker UI exists yet. Content-0 is implemented separately. Gameplay defaults are approved in DECISIONS.md; implementation and verification remain.
 
 Independent review and corrected findings are recorded in [M0-REVIEW.md](M0-REVIEW.md). Frame and tone output are atomic per file, not as a bundle.
 
 ## Next slice
 
-Resolve the remaining remote CI and live presentation gates. The balance-independent Content-0 contract, typed IDs, inert versioned documents, strict reference/semantic validation and diagnostics are now implemented; see [M2-STATUS.md](M2-STATUS.md). Numerical timing, damage and RNG rules still gate battle-kernel work.
+Resolve the remaining remote CI and live presentation gates. The balance-independent Content-0 contract, typed IDs, inert versioned documents, strict reference/semantic validation and diagnostics are now implemented; see [M2-STATUS.md](M2-STATUS.md). Approved timing, damage, RNG and U01–U13 defaults permit battle-kernel work under [M3-BATTLE.md](../work-orders/M3-BATTLE.md).

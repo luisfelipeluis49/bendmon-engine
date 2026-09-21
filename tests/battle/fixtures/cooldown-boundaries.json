@@ -1,0 +1,15 @@
+{
+  "fixture_version": "m3-fixtures-1",
+  "id": "cooldown-boundaries",
+  "kind": "cooldown",
+  "description": "Cooldown readiness uses now-at-least-deadline and rejects the tick before expiry.",
+  "initial_state": {"tick": 700, "ready_actor_ids": ["actor-01"], "rng_state": [29, 30, 31, 32]},
+  "commands": [
+    {"actor_id": "actor-01", "choice": "move", "move_id": "move-reuse", "target_id": "actor-02", "cooldown_deadline": 760, "attempt_tick": 759},
+    {"actor_id": "actor-01", "choice": "move", "move_id": "move-reuse", "target_id": "actor-02", "cooldown_deadline": 760, "attempt_tick": 760}
+  ],
+  "expected": {"result": "boundary-checked", "rng_draws": 0, "events": [
+    {"type": "command-rejected", "attempt_tick": 759, "reason": "cooldown-active"},
+    {"type": "command-accepted", "attempt_tick": 760, "reason": "deadline-expired"}
+  ]}
+}

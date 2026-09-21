@@ -1,6 +1,6 @@
 # Engine-owned rule registry — planning authority
 
-This is the single planning registry; no executable registry exists. TBD means not approved, not a value of zero. Runtime content cannot supply these fields. Freeze exact values only after owner decisions; then generate/check this document against a single engine source. Changed mechanics require a ruleset version change and explicit replay/save compatibility treatment.
+This is the single planning registry; no executable registry exists yet. Every listed initial value is approved. Runtime content cannot supply engine-owned fields except where a row explicitly permits a bounded creator value. Generate and check this document against one engine source as each runtime table lands. Changed mechanics require a ruleset version change and explicit replay/save compatibility treatment.
 
 | Name | Meaning / unit | Valid range | Canonical value | Rationale / dependents |
 |---|---|---|---|---|

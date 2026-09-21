@@ -1,0 +1,16 @@
+{
+  "fixture_version": "m3-fixtures-1",
+  "scenarios": [
+    "barrier-ordering",
+    "zero-windup-ordering",
+    "invalid-target-fizzle",
+    "cancellation",
+    "draw",
+    "timeout",
+    "wait-choices",
+    "cooldown-boundaries",
+    "escape",
+    "reinforcement",
+    "switch"
+  ]
+}

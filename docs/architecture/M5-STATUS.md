@@ -1,6 +1,6 @@
 # M5 multi-type attack status
 
-Status: complete locally; formal completion requires hosted Ubuntu CI.
+Status: complete and verified locally and through hosted Ubuntu CI on 2026-09-22.
 
 ## Implemented
 
@@ -19,6 +19,7 @@ Status: complete locally; formal completion requires hosted Ubuntu CI.
 - `LAWS.bend` and `PROOF.bend` call production allocation and component-resolution functions; `scripts/verify.py` includes the M5 golden and complete M5 fixture/cross-target suite.
 - `python3 scripts/verify.py` passes 140 checks locally, including every prior milestone gate.
 - Two independent Luna reviews covered the approved contract, implementation and documentation. Final code review found one invalid public zero-denominator path; production interaction validation and a native/JavaScript golden now cover the fix. Documentation review found stale top-level status claims; the README now reflects the completed battle/effect milestones and current M5 state.
+- Hosted Ubuntu verification passed the same 140-check gate in [GitHub Actions run 35708193300](https://github.com/luisfelipeluis49/bendmon-engine/actions/runs/35708193300). The first hosted attempt exposed only the M5 interpreter golden's runner-time allowance; the final gate uses the same bounded 180-second allowance already established for slow differential compilation.
 
 ## Milestone boundary
 

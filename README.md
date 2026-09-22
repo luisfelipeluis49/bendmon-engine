@@ -1,6 +1,6 @@
 # Data-driven 2.5D Monster RPG Maker
 
-A primarily Bend 2, content-agnostic engine and visual maker in development. M0–M4 are complete locally and in hosted CI: the repository includes the pinned compiler/proof foundation, strict inert content kernel, deterministic headless battle/replay runtime and closed effect/status transaction. M5 multi-type allocation and damage resolution are implemented locally and pending their final hosted gate. The visual editor is not implemented yet.
+A primarily Bend 2, content-agnostic engine and visual maker in development. M0–M5 are complete locally and in hosted CI: the repository includes the pinned compiler/proof foundation, strict inert content kernel, deterministic headless battle/replay runtime, closed effect/status transaction and typed multi-type damage algebra. The visual editor is not implemented yet.
 
 Start with [PLAN.md](PLAN.md), [product scope](docs/PRODUCT.md), [architecture](docs/architecture/ARCHITECTURE.md) and [owner decisions](docs/DECISIONS.md).
 

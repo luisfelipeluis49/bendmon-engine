@@ -1,0 +1,5 @@
+{
+  "fixture_version": "m5-multitype-1", "id": "chart-dual-defender", "description": "Two independent strong defenders multiply before one component floor.",
+  "power": 100, "components": [1], "actor_types": [1], "defender_types": [3, 7],
+  "expected": {"allocations": [100], "component_damage": [300], "total_damage": 300, "canonical": "1:100:300", "native": "1:100:300", "javascript": "1:100:300"}
+}

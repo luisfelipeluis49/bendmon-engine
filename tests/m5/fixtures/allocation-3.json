@@ -1,0 +1,5 @@
+{
+  "fixture_version": "m5-multitype-1", "id": "allocation-3", "description": "Three components allocate remainder to canonical first types.",
+  "power": 100, "components": [9, 3, 5], "actor_types": [9], "defender_types": [2],
+  "expected": {"allocations": [33, 34, 33], "component_damage": [24, 34, 16], "total_damage": 74, "canonical": "9:33:24|3:34:34|5:33:16", "native": "9:33:24|3:34:34|5:33:16", "javascript": "9:33:24|3:34:34|5:33:16"}
+}

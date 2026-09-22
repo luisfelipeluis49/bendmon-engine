@@ -12,6 +12,7 @@ import ./engine/battle/reducer.bend as Reducer
 import ./engine/battle/participants.bend as Participants
 import ./engine/battle/runtime.bend as Runtime
 import ./engine/battle/effects.bend as Effects
+import ./engine/battle/multi_type.bend as Multi
 
 # BOOT-1: adding zero preserves the headless accumulator for every Nat state.
 # This is a toolchain/bootstrap law, not a battle or progression specification.
@@ -157,6 +158,22 @@ law effect_attempt_deterministic:
   {Effects.attempt(program, world, snapshot, rng, aftermath) ==
     Effects.attempt(program, world, snapshot, rng, aftermath)
     : Effects.EffectResult}
+
+
+# DMG-1: production quotient/remainder allocation preserves the declared
+# budget for the approved three-component reference, including authored order.
+law multi_allocation_conservation_reference:
+  {Multi.allocation_total(Multi.allocate(100,
+    [Multi.TypeId{3n}, Multi.TypeId{1n}, Multi.TypeId{2n}])) == 100 : U32}
+
+
+# DMG-2: immunity zeroes exactly one resolved component contribution while
+# retaining its identity, allocated power and STAB diagnostic.
+law multi_immunity_zero_reference:
+  {Multi.component_damage(Multi.DamageProfile{50, 100, 100},
+    Multi.DamageComponent{Multi.TypeId{1n}, 40}, Multi.TypeImmune{}, True{}) ==
+    Multi.ComponentResolved{Multi.ComponentDamage{Multi.TypeId{1n}, 40, 0,
+      True{}, True{}}} : Multi.ComponentResult}
 
 
 # Approved future proof obligations (2026-09-21 decision packet):

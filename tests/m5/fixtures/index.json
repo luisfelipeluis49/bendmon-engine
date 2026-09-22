@@ -1,0 +1,12 @@
+{
+  "fixture_version": "m5-multitype-1",
+  "fixtures": [
+    "allocation-1.json",
+    "allocation-2.json",
+    "allocation-3.json",
+    "allocation-4.json",
+    "chart-dual-defender.json",
+    "invalid-inputs.json",
+    "modifiers-boundaries.json"
+  ]
+}

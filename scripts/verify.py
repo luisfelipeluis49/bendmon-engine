@@ -109,6 +109,9 @@ def main():
     run('battle runtime golden', ['bend', 'tests/battle/runtime_test.bend'], output='[1n, 1n, 1n, 1n, 1n, 1n, 1n, 1n, 1n, 1n, 1n, 1n, 1n, 1n, 1n, 1n, 1n, 1n, 1n, 1n]')
     run('battle effect runtime golden', ['bend', 'tests/battle/runtime_effect_test.bend'], output='[31n, 1n, 1n, 11n, 1n]')
     run('battle effect algebra golden', ['bend', 'tests/battle/effects_test.bend'], output='[1n, 1n, 1n, 1n, 1n, 1n, 1n, 1n, 1n, 1n, 1n, 1n, 1n, 1n, 1n, 1n, 1n, 1n, 1n, 1n, 1n, 1n, 1n, 1n, 1n, 1n, 1n, 1n]')
+    run('M5 multi-type golden', ['bend', 'tests/m5/multi_type_test.bend'], output='[1n, 1n, 1n, 1n, 1n, 1n, 1n, 1n, 1n]')
+    run('M5 fixture and cross-target suite', [sys.executable, '-m', 'unittest',
+        'discover', '-s', 'tests/m5', '-t', '.', '-p', 'test_*.py', '-v'], timeout=180)
     run('battle replay fold golden', ['bend', 'tests/replay/fold_test.bend'], output='[1n, 1n, 1n, 1n]')
     run('battle runtime replay golden', ['bend', 'tests/replay/runtime_fold_test.bend'], output='[1n, 1n, 1n]')
     run('battle effect replay golden', ['bend', 'tests/replay/runtime_effect_fold_test.bend'], output='[1n]')

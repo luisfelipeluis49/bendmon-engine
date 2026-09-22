@@ -59,3 +59,9 @@ def Laws.effect_burn_physical_modifier():
 
 def Laws.effect_attempt_deterministic(program, world, snapshot, rng, aftermath):
   {==}
+
+def Laws.multi_allocation_conservation_reference():
+  {==}
+
+def Laws.multi_immunity_zero_reference():
+  {==}

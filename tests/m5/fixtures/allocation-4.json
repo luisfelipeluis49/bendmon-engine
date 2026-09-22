@@ -1,0 +1,5 @@
+{
+  "fixture_version": "m5-multitype-1", "id": "allocation-4", "description": "Four components preserve a small budget without minimum damage.",
+  "power": 3, "components": [4, 1, 8, 2], "actor_types": [1, 2], "defender_types": [2, 3],
+  "expected": {"allocations": [1, 1, 0, 1], "component_damage": [0, 0, 0, 0], "total_damage": 0, "canonical": "4:1:0|1:1:0|8:0:0|2:1:0", "native": "4:1:0|1:1:0|8:0:0|2:1:0", "javascript": "4:1:0|1:1:0|8:0:0|2:1:0"}
+}

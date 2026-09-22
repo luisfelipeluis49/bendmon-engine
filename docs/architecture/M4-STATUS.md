@@ -1,6 +1,6 @@
 # M4 effect algebra status
 
-Status: implementation and local verification complete on 2026-09-22; hosted verification is pending the implementation push.
+Status: complete and verified locally and through hosted Ubuntu CI on 2026-09-22.
 
 ## Implemented
 
@@ -19,6 +19,7 @@ Status: implementation and local verification complete on 2026-09-22; hosted ver
 - `tests/battle/test_effects_cross_target.py` compiles the same production golden to native and JavaScript and requires byte-identical output.
 - `python3 scripts/verify.py` passes 137 local checks, including the proof gate, native/JavaScript boundaries, runtime/replay goldens and content validation.
 - An independent Luna review found four runtime integration defects and two follow-up coverage gaps. The final focused re-review found no remaining semantic defect; all six items are fixed and covered before the push.
+- Hosted Ubuntu verification passed the same 137-check gate in [GitHub Actions run 35686502069](https://github.com/luisfelipeluis49/bendmon-engine/actions/runs/35686502069).
 
 ## Milestone boundary
 

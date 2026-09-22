@@ -1,0 +1,5 @@
+{
+  "fixture_version": "m5-multitype-1", "id": "allocation-2", "description": "Two components split quotient and remainder in type order.",
+  "power": 101, "components": [7, 2], "actor_types": [1], "defender_types": [2],
+  "expected": {"allocations": [50, 51], "component_damage": [25, 25], "total_damage": 50, "canonical": "7:50:25|2:51:25", "native": "7:50:25|2:51:25", "javascript": "7:50:25|2:51:25"}
+}

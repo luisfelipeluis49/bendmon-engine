@@ -1,0 +1,5 @@
+{
+  "fixture_version": "m5-multitype-1", "id": "allocation-1", "description": "One component preserves all power.",
+  "power": 100, "components": [1], "actor_types": [1], "defender_types": [2],
+  "expected": {"allocations": [100], "component_damage": [37], "total_damage": 37, "canonical": "1:100:37", "native": "1:100:37", "javascript": "1:100:37"}
+}

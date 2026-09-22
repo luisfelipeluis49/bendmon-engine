@@ -1,0 +1,5 @@
+{
+  "fixture_version": "m5-multitype-1", "id": "invalid-inputs", "description": "Rejected shape cases are named for the negative contract.",
+  "power": 0, "components": [1, 1], "actor_types": [], "defender_types": [], "invalid": "zero-power-or-duplicate-type",
+  "expected": {"allocations": [], "component_damage": [], "total_damage": 0, "canonical": "rejected", "native": "rejected", "javascript": "rejected"}
+}

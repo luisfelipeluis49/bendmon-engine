@@ -113,7 +113,10 @@ def main():
     run('battle runtime replay golden', ['bend', 'tests/replay/runtime_fold_test.bend'], output='[1n, 1n, 1n]')
     run('battle effect replay golden', ['bend', 'tests/replay/runtime_effect_fold_test.bend'], output='[1n]')
     run('persistence boundary regression suite', [sys.executable, '-m', 'unittest', 'discover', '-s', 'tests/persistence', '-p', 'test_*.py', '-v'])
-    run('replay checkpoint regression suite', [sys.executable, '-m', 'unittest', 'discover', '-s', 'tests/replay', '-p', 'test_*.py', '-v'])
+    # Runtime cross-target compilation is intentionally part of this suite and
+    # takes about 85 seconds on the reference workstation. Give slower hosted
+    # runners the same bounded allowance used by the content regression group.
+    run('replay checkpoint regression suite', [sys.executable, '-m', 'unittest', 'discover', '-s', 'tests/replay', '-p', 'test_*.py', '-v'], timeout=180)
     result = run('original project loads through Bend', [sys.executable, 'scripts/validate_project.py', 'examples/original-demo'])
     loaded = json.loads(result.stdout)
     assert loaded['ok'] is True and len(loaded['contentHash']) == 64

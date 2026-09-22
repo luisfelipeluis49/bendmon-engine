@@ -107,6 +107,7 @@ def main():
     run('battle sources golden', ['bend', 'tests/battle/sources_test.bend'], output='[1n, 1n, 1n, 1n]')
     run('battle driver golden', ['bend', 'tests/battle/driver_test.bend'], output='[1n, 1n, 1n]')
     run('battle runtime golden', ['bend', 'tests/battle/runtime_test.bend'], output='[1n, 1n, 1n, 1n, 1n, 1n, 1n, 1n, 1n, 1n, 1n, 1n, 1n, 1n, 1n, 1n, 1n, 1n, 1n, 1n]')
+    run('battle effect algebra golden', ['bend', 'tests/battle/effects_test.bend'], output='[1n, 1n, 1n, 1n, 1n, 1n, 1n, 1n, 1n, 1n, 1n, 1n, 1n, 1n, 1n, 1n, 1n, 1n, 1n, 1n, 1n, 1n, 1n, 1n]')
     run('battle replay fold golden', ['bend', 'tests/replay/fold_test.bend'], output='[1n, 1n, 1n, 1n]')
     run('battle runtime replay golden', ['bend', 'tests/replay/runtime_fold_test.bend'], output='[1n, 1n, 1n]')
     run('persistence boundary regression suite', [sys.executable, '-m', 'unittest', 'discover', '-s', 'tests/persistence', '-p', 'test_*.py', '-v'])

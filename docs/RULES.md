@@ -37,6 +37,7 @@ This is the single planning registry; no executable registry exists yet. Every l
 | MOVE_POWER | creator-authored damaging move power | integer 1–200 | bounded exact integer; absent for nondamaging moves | damage validation; D04 |
 | EFFECTIVE_COMBAT_STAT | post-modifier Attack/Defense/Sp. Attack/Sp. Defense/Speed | integer 1–9999 | bounded exact integer; no wrap | damage safety, tie ordering; D04 |
 | EFFECT / STATUS ALGEBRA | ordered effects and named-status multiplicity | finite closed engine definitions | authored order in one atomic action; one instance/name; refresh duration and keep stronger magnitude; engine incompatibility table | D04; M4 |
+| M4_EFFECT_BOUNDS | accepted ruleset-1 effect program | top-level 1–16; validated total cost ≤64 | at most one damage node; conditional branches are leaf sequences with no nested conditional; heal 1–9999; derived fraction terms 1–16; stage delta 1–6 | D04; M4 |
 | MULTI_TYPE_ALLOCATION | component count and power division | 1–4 distinct TypeIds | quotient plus canonical TypeId remainder; per-component modifier/floor then checked sum | D07; M5 |
 | XP_CURVE / STAT_CURVE | progression functions over 1–200 | monotone 200-entry XP table; bounded stats | XP(L)=25×(L−1)^3+75×(L−1); HP=floor((2b+i)L/100)+L+10; other=floor((2b+i)L/100)+5 | PROG-1; U06 |
 | CAPTURE_RULE | capture transaction | one action/item; bounded probability; legal destination required | U07 HP/item/status formula; final clamp 100–9500; atomic party-first then storage success | CAP-1; U07 |

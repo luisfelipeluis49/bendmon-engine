@@ -44,3 +44,15 @@ def Laws.battle_reinforcement_order():
 
 def Laws.battle_runtime_deterministic(fuel, state):
   {==}
+
+def Laws.effect_runtime_deterministic(program, world, snapshot, rng):
+  {==}
+
+def Laws.effect_stage_upper_saturation():
+  {==}
+
+def Laws.effect_status_duration_catalog():
+  {==}
+
+def Laws.effect_burn_physical_modifier():
+  {==}

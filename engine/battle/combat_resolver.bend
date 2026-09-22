@@ -123,6 +123,19 @@ def resolve_damage(
       resolve_accuracy(accuracy, original, normal, critical_damage,
         critical_bonus)
 
+def resolve_modified_damage(
+  damage: Math.DamageResult, accuracy: Math.AccuracyResult,
+  +original: Rng.RngState, +critical_bonus: U32,
+  +numerator: U32, +denominator: U32
+) -> CombatResolution:
+  match damage:
+    case Math.DamageInvalid{}:
+      CombatInvalid{original}
+    case Math.DamageValue{normal, critical_damage}:
+      +modified = U32.div(U32.mul(normal, numerator), denominator)
+      resolve_accuracy(accuracy, original, modified, U32.mul(modified, 2),
+        critical_bonus)
+
 def resolve(
   +rng: Rng.RngState, mode: Math.AccuracyMode,
   attacker_accuracy: Math.Stage, target_evasion: Math.Stage,
@@ -132,6 +145,16 @@ def resolve(
   resolve_damage(Math.damage(power, level, attack, defense),
     Math.accuracy(mode, attacker_accuracy, target_evasion), rng,
     critical_bonus)
+
+def resolve_modified(
+  +rng: Rng.RngState, mode: Math.AccuracyMode,
+  attacker_accuracy: Math.Stage, target_evasion: Math.Stage,
+  +power: U32, +level: U32, +attack: U32, +defense: U32,
+  +critical_bonus: U32, +numerator: U32, +denominator: U32
+) -> CombatResolution:
+  resolve_modified_damage(Math.damage(power, level, attack, defense),
+    Math.accuracy(mode, attacker_accuracy, target_evasion), rng,
+    critical_bonus, numerator, denominator)
 
 def noncritical_hit(
   kind: NonCriticalKind, +rng: Rng.RngState, +candidates: Nat

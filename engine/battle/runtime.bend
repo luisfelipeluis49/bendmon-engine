@@ -9,6 +9,7 @@ import ./scheduler.bend as Scheduler
 import ./driver.bend as Driver
 import ./reducer.bend as Reducer
 import ./participants.bend as Participants
+import ./effects.bend as Effects
 
 # This file is the narrow runtime boundary for the current M3 battle slice.
 # It owns runtime snapshots and RNG transactions while Scheduler, Driver and
@@ -85,6 +86,15 @@ type RuntimeCommand is Data:
   RuntimeWait{source: Model.ActorId}
   RuntimeSwitch{source: Model.ActorId, incoming: Model.ActorId}
   RuntimeEscape{source: Model.ActorId}
+
+# M4's production action boundary. The scheduler supplies its accepted snapshot
+# and execution-time world, then commits this pure atomic result alongside its
+# normal cooldown/recovery transition. apply_aftermath is false only when the
+# runtime has already established battle completion for the action.
+def runtime_effect_attempt(program: Effects.EffectProgram,
+  world: Effects.EffectWorld, snapshot: Effects.ActionSnapshot,
+  rng: Rng.RngState, apply_aftermath: Bool) -> Effects.EffectResult:
+  Effects.attempt(program, world, snapshot, rng, apply_aftermath)
 
 def RuntimeCommand.actor(command: RuntimeCommand) -> Model.ActorId:
   match command:

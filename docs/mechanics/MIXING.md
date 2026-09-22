@@ -30,6 +30,23 @@ Harmony is per individual and learned recipe. Store successful-use progress in 0
 
 A successful use is a valid mixed execution producing at least one intended gameplay effect. Miss, protection/immunity blocking every effect, healing at full HP, cancellation and fizzle grant no progress. Award at most once per action, not per hit, component or target. Reusing an event ID must not award twice. Commit progress with the action; later loss or escape does not erase it.
 
+For ruleset `m6-1`, an intended effect succeeds only when the registered program
+commits and changes gameplay state through positive actual damage or healing, a
+status add/replace/refresh that changes status state, status removal/clear, or a
+nonzero stat-stage change. Opportunity aftermath alone does not qualify.
+Zero-damage or fully blocked output, a no-op status refresh, saturated stage
+change, rejection and engine fault join the non-success cases above. The stable
+accepted action sequence is the idempotence key. Harmony accuracy and critical
+bonuses are captured with the actor's offensive snapshot at acceptance and do
+not add RNG draws.
+
+The initial recipe requirement vocabulary is `Always` plus the target and
+execution guards already owned by the registered M4 descriptor. Current move
+knowledge is a distinct bounded `BaseMoveId` list on the persistent individual;
+slot order does not affect the unordered recipe pair. Training consumes one
+token from a U32 balance and installs learned Harmony progress zero atomically.
+These representation closures are recorded in D05/D06/D09/D10's M6 closure.
+
 ## Obligations
 
 Tests cover all MIX-1–8, unknown/unlearned sources, forgotten sources, 3+ types, reversed pairs, self-pairs, partial resource failures, cooldown boundary, observation without training, training without observation, unrelated individual learning, max-Harmony saturation and duplicate completion events. Laws quantify over valid recipes/individuals and accepted transitions; they must be tied to actual implementation functions.

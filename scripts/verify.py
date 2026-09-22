@@ -115,6 +115,17 @@ def main():
         output='[1n, 1n, 1n, 1n, 1n, 1n, 1n, 1n, 1n]', timeout=180)
     run('M5 fixture and cross-target suite', [sys.executable, '-m', 'unittest',
         'discover', '-s', 'tests/m5', '-t', '.', '-p', 'test_*.py', '-v'], timeout=180)
+    run('M6 recipe core golden', ['bend', 'tests/m6/recipe_test.bend'],
+        output='[1n, 1n, 1n, 1n, 1n, 1n, 1n]')
+    run('M6 mixed source transaction golden',
+        ['bend', 'tests/m6/mixed_sources_test.bend'],
+        output='[1n, 1n, 1n, 1n, 1n, 1n]')
+    run('M6 Harmony core golden', ['bend', 'tests/m6/harmony_test.bend'],
+        output='True{}')
+    run('M6 eligibility core golden', ['bend', 'tests/m6/eligibility_test.bend'],
+        output='[True{}, True{}, True{}, True{}]')
+    run('M6 learning core golden', ['bend', 'tests/m6/learning_test.bend'],
+        output='[1n, 1n, 1n, 1n, 1n]')
     run('battle replay fold golden', ['bend', 'tests/replay/fold_test.bend'], output='[1n, 1n, 1n, 1n]')
     run('battle runtime replay golden', ['bend', 'tests/replay/runtime_fold_test.bend'], output='[1n, 1n, 1n]')
     run('battle effect replay golden', ['bend', 'tests/replay/runtime_effect_fold_test.bend'], output='[1n]')

@@ -65,3 +65,18 @@ def Laws.multi_allocation_conservation_reference():
 
 def Laws.multi_immunity_zero_reference():
   {==}
+
+def Laws.mixed_source_duration_reference():
+  {==}
+
+def Laws.mixed_source_partial_rejection():
+  {==}
+
+def Laws.harmony_saturation_reference():
+  {==}
+
+def Laws.harmony_familiar_package_reference():
+  {==}
+
+def Laws.mix_pair_symmetry_reference():
+  {==}

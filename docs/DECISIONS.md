@@ -124,6 +124,44 @@ On 2026-09-21 the owner approved every recommendation in the remaining R01–R13
 - Recommendation: Unordered distinct BaseMoveId pairs, one recipe per pair; no ordered recipes in MVP.
 - Consequences / still to specify: Later ordered recipes need explicit new schema/version. Mixed outputs never become sources.
 
+### M6 implementation closure for D05/D06/D09/D10
+
+Status: APPROVED under the owner's 2026-09-21 direction to use every remaining
+recommended choice. These details close representation questions needed to
+prepare M6; they do not begin implementation.
+
+- The initial recipe requirement vocabulary is `Always` plus the target and
+  execution guards already validated by the registered M4 descriptor. Weather,
+  flags, inventory predicates and arbitrary expressions require a later
+  versioned schema decision.
+- Current move knowledge is a distinct bounded list of `BaseMoveId` values on a
+  persistent `MonsterId`. Both recipe sources must be present for training and
+  execution. Slot order and submitted source order do not change recipe
+  identity.
+- Harmony accuracy and critical bonuses are actor-side values snapshotted at
+  command acceptance with the existing offensive snapshot. They feed the one
+  M4 action-level accuracy/critical transaction and add no RNG draws.
+- The accepted battle-local action sequence is the idempotence identity for
+  witness staging and Harmony completion. Re-delivering completion for that
+  sequence cannot award twice.
+- Harmony success requires a committed registered program whose intended
+  program effects changed gameplay state: positive actual damage or healing,
+  status add/replace/refresh that changes status state, status removal/clear,
+  or a nonzero stat-stage change. Aftermath alone does not qualify. Miss,
+  zero-damage or fully blocked output, full-HP healing, cancellation, fizzle,
+  rejection and engine fault grant no progress. Drain/recoil cannot create an
+  extra award; one action grants at most one point.
+- Training is a pure post-battle transaction over one individual and a U32
+  token balance. It requires a designated trainer, observation, an unlearned
+  compatible recipe and both current sources. Success consumes one token and
+  installs Harmony progress zero atomically; failure is unchanged. World
+  placement and inventory ownership remain M7/M8 integration work.
+- `m6-1` is reserved as the semantic identity for states/replays that contain
+  M6 mechanics. Existing `m3-1` replays retain their identity and are never
+  reinterpreted. The runtime registry changes to `m6-1` only when M6 actually
+  lands; project content remains `unassigned` until a playable ruleset is
+  published.
+
 ## D11 — XP/stat/evolution curves for levels 1–200
 
 - Status: APPROVED structurally — R07 Option A. Gate: M7.

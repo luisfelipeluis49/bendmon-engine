@@ -11,6 +11,7 @@ import ./engine/battle/driver.bend as Driver
 import ./engine/battle/reducer.bend as Reducer
 import ./engine/battle/participants.bend as Participants
 import ./engine/battle/runtime.bend as Runtime
+import ./engine/battle/effects.bend as Effects
 
 # BOOT-1: adding zero preserves the headless accumulator for every Nat state.
 # This is a toolchain/bootstrap law, not a battle or progression specification.
@@ -115,6 +116,34 @@ law battle_runtime_deterministic:
   for state: Runtime.RuntimeState
   {Runtime.runtime_run(fuel, state) == Runtime.runtime_run(fuel, state)
     : Runtime.RuntimeRunResult}
+
+
+# EFFECT-DET: the complete validated M4 action transaction is a pure function
+# of its closed program, current world, accepted snapshot and RNG state.
+law effect_runtime_deterministic:
+  for program: Effects.EffectProgram
+  for world: Effects.EffectWorld
+  for snapshot: Effects.ActionSnapshot
+  for rng: Rng.RngState
+  {Effects.run(program, world, snapshot, rng) ==
+    Effects.run(program, world, snapshot, rng) : Effects.EffectResult}
+
+
+# EFFECT-STAGE-CAP: stage changes saturate at the engine-owned +6 ceiling.
+law effect_stage_upper_saturation:
+  {Effects.apply_delta(CombatMath.StageUp{5n}, Effects.Raise{6}) ==
+    CombatMath.StageUp{6n} : CombatMath.Stage}
+
+
+# STATUS-CATALOG: initial durations are engine data rather than authored values.
+law effect_status_duration_catalog:
+  {Effects.status_duration(Effects.Burn{}) == 3 : U32}
+
+
+# STATUS-BURN: burn applies the approved exact 3/4 physical modifier.
+law effect_burn_physical_modifier:
+  {Effects.physical_damage_after_status(100,
+    [Effects.StatusInstance{Effects.Burn{}, 3, 6}]) == 75 : U32}
 
 
 # Approved future proof obligations (2026-09-21 decision packet):

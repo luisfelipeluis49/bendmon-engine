@@ -168,3 +168,89 @@ def charge(
 ) -> ChargeResult:
   charge_decide(Scheduler.deadline_ok(now, duration), owner, move,
     U32.add(now, duration), sources)
+
+# Mixed-source charging is one checked transaction. The ordinary source list
+# remains the authority for both reservations; no first-source write is visible
+# until both durations and deadline additions have been validated.
+type MixedChargeResult is Data:
+  MixedSourcesCharged{sources: List<&2, MoveSource>}
+  MixedSourcesRejected{sources: List<&2, MoveSource>}
+
+def mixed_duration(+ordinary: U32) -> U32:
+  U32.add(U32.add(ordinary, U32.div(ordinary, 2)),
+    U32.mod(ordinary, 2))
+
+def count_if(valid: Bool) -> Nat:
+  match valid:
+    case True{}: 1n
+    case False{}: 0n
+
+def reserved_matches(
+  +now: U32, +wanted_owner: Model.ActorId, +wanted_move: Math.MoveId,
+  sources: List<&2, MoveSource>
+) -> Nat:
+  match sources:
+    case Nil{}:
+      0n
+    case MoveSource{+owner, +move, +deadline, reserved} <> rest:
+      Nat.add(count_if(Bool.and(key_eq(wanted_owner, wanted_move, owner,
+        move), Bool.and(reserved, U32.is_ge(now, deadline)))),
+        reserved_matches(now, wanted_owner, wanted_move, rest))
+
+def key_count(
+  +wanted_owner: Model.ActorId, +wanted_move: Math.MoveId,
+  sources: List<&2, MoveSource>
+) -> Nat:
+  match sources:
+    case Nil{}:
+      0n
+    case MoveSource{+owner, +move, deadline, reserved} <> rest:
+      Nat.add(count_if(key_eq(wanted_owner, wanted_move, owner, move)),
+        key_count(wanted_owner, wanted_move, rest))
+
+def mixed_reservations_valid(
+  +now: U32, +owner: Model.ActorId, +first: Math.MoveId,
+  +second: Math.MoveId, +sources: List<&2, MoveSource>
+) -> Bool:
+  Bool.and(Bool.and(Nat.is_eq(key_count(owner, first, sources), 1n),
+      Nat.is_eq(key_count(owner, second, sources), 1n)),
+    Bool.and(Nat.is_eq(reserved_matches(now, owner, first, sources), 1n),
+      Nat.is_eq(reserved_matches(now, owner, second, sources), 1n)))
+
+def mixed_sources_valid(
+  +now: U32, +owner: Model.ActorId, +first: Math.MoveId,
+  +second: Math.MoveId, +first_cooldown: U32, +second_cooldown: U32,
+  +sources: List<&2, MoveSource>
+) -> Bool:
+  Bool.and(Bool.not(MoveId.eq(first, second)),
+    Bool.and(Bool.and(U32.is_ge(first_cooldown, 60),
+      U32.is_le(first_cooldown, 3600)),
+    Bool.and(Bool.and(U32.is_ge(second_cooldown, 60),
+      U32.is_le(second_cooldown, 3600)),
+    Bool.and(mixed_reservations_valid(now, owner, first, second, sources),
+    Bool.and(Scheduler.deadline_ok(now, mixed_duration(first_cooldown)),
+      Scheduler.deadline_ok(now, mixed_duration(second_cooldown)))))))
+
+def mixed_charge_decide(
+  valid: Bool, +now: U32, +owner: Model.ActorId,
+  +first: Math.MoveId, +second: Math.MoveId,
+  +first_cooldown: U32, +second_cooldown: U32,
+  +sources: List<&2, MoveSource>
+) -> MixedChargeResult:
+  match valid:
+    case False{}:
+      MixedSourcesRejected{sources}
+    case True{}:
+      MixedSourcesCharged{charge_source(owner, second,
+        U32.add(now, mixed_duration(second_cooldown)),
+        charge_source(owner, first,
+          U32.add(now, mixed_duration(first_cooldown)), sources))}
+
+def charge_mixed_pair(
+  +now: U32, +owner: Model.ActorId, +first: Math.MoveId,
+  +second: Math.MoveId, +first_cooldown: U32, +second_cooldown: U32,
+  +sources: List<&2, MoveSource>
+) -> MixedChargeResult:
+  mixed_charge_decide(mixed_sources_valid(now, owner, first, second,
+    first_cooldown, second_cooldown, sources), now, owner, first, second,
+    first_cooldown, second_cooldown, sources)

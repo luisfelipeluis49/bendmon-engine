@@ -13,6 +13,9 @@ import ./engine/battle/participants.bend as Participants
 import ./engine/battle/runtime.bend as Runtime
 import ./engine/battle/effects.bend as Effects
 import ./engine/battle/multi_type.bend as Multi
+import ./engine/mixing/harmony.bend as Harmony
+import ./engine/mixing/recipe.bend as MixRecipe
+import ./engine/mixing/model.bend as MixModel
 
 # BOOT-1: adding zero preserves the headless accumulator for every Nat state.
 # This is a toolchain/bootstrap law, not a battle or progression specification.
@@ -174,6 +177,40 @@ law multi_immunity_zero_reference:
     Multi.DamageComponent{Multi.TypeId{1n}, 40}, Multi.TypeImmune{}, True{}) ==
     Multi.ComponentResolved{Multi.ComponentDamage{Multi.TypeId{1n}, 40, 0,
       True{}, True{}}} : Multi.ComponentResult}
+
+
+# MIX-4: the production source transaction charges an odd ordinary cooldown
+# with a ceiling and leaves neither source charged when the second is missing.
+law mixed_source_duration_reference:
+  {Sources.mixed_duration(61) == 92 : U32}
+
+law mixed_source_partial_rejection:
+  {Sources.charge_mixed_pair(100, BattleModel.ActorId{0n},
+    CombatMath.MoveId{7n}, CombatMath.MoveId{8n}, 60, 60,
+    [Sources.MoveSource{BattleModel.ActorId{0n}, CombatMath.MoveId{7n},
+      0, True{}}]) ==
+    Sources.MixedSourcesRejected{
+      [Sources.MoveSource{BattleModel.ActorId{0n}, CombatMath.MoveId{7n},
+        0, True{}}]} : Sources.MixedChargeResult}
+
+
+# HARM-1/2 reference edges call the production saturation and package helpers.
+# The broader per-action state-machine property is exercised by M6 goldens.
+law harmony_saturation_reference:
+  {Harmony.next_progress(40) == 40 : U32}
+
+law harmony_familiar_package_reference:
+  {Harmony.bonuses(5) == Harmony.HarmonyPackage{100, 125}
+    : Harmony.HarmonyPackage}
+
+
+# MIX-6: the production unordered-key helper gives the same identity when
+# source order is reversed in the approved distinct-source reference.
+law mix_pair_symmetry_reference:
+  {MixRecipe.canonical_pair(CombatMath.MoveId{7n},
+      CombatMath.MoveId{8n}) ==
+    MixRecipe.canonical_pair(CombatMath.MoveId{8n},
+      CombatMath.MoveId{7n}) : MixModel.SourcePair}
 
 
 # Approved future proof obligations (2026-09-21 decision packet):

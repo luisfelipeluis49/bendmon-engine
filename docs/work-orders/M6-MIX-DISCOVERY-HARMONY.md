@@ -1,6 +1,9 @@
 # M6 mix, discovery and Harmony work orders
 
-Status: prepared on 2026-09-22; implementation has not started.
+Status: implementation started on 2026-09-22. The M6-A recipe core, M6-B
+pure learning/Harmony core, and the M6-C two-source transaction helper are in
+progress. Battle execution integration, replay, cross-target tests and formal
+milestone closeout remain pending.
 
 This is the controlling M6 work package. The approved semantics are D05, D06,
 D09 and D10 in `docs/DECISIONS.md`, MIX-1–8 in

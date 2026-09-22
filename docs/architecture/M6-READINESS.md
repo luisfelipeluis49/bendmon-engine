@@ -1,6 +1,7 @@
 # M6 readiness package
 
-Status: ready to start, but not started, on 2026-09-22.
+Status: preparation checkpoint completed on 2026-09-22. M6 implementation
+subsequently started; current state is in `docs/architecture/M6-PROGRESS.md`.
 
 ## Prepared inputs
 
@@ -18,9 +19,9 @@ Status: ready to start, but not started, on 2026-09-22.
   prior gate and hosted Ubuntu CI.
 
 No runtime, test, proof, schema, executable ruleset constant or fixture file was
-added or changed during preparation. The planning registry reserves `m6-1`, but
-the runtime remains `m3-1`. M6 implementation begins only when an agent starts
-M6-A or M6-B.
+added or changed during this preparation checkpoint. The planning registry
+reserves `m6-1`, but the runtime remains `m3-1` until the M6 runtime boundary
+lands.
 
 ## Planned file manifest
 

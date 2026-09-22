@@ -18,7 +18,7 @@ INPUT CONTRACT: a prevalidated closed `EffectProgram`, two valid effect actors, 
 
 OUTPUT CONTRACT: one committed world/RNG with ordered semantic events and actual-damage records, unchanged rejection, or unchanged atomic RNG fault.
 
-IMPLEMENTATION NOTES: 16 top-level nodes, 64-node total validation cost, one damage node, conditional leaf branches, sequential commit, no host callbacks. Independent native/JavaScript builds must match.
+IMPLEMENTATION NOTES: 16 top-level nodes, 64-node total validation cost, one first/top-level damage node, damage-free conditional leaf branches, one action-level accuracy gate, sequential commit, no host callbacks. The M3 command/reservation/runtime/replay path executes M4 programs, captures Burn/Blind at acceptance, preserves rejection diagnostics and commits blocking/aftermath. Independent native/JavaScript builds must match.
 
 EDGE CASES: zero rounded damage, HP saturation, heal at full HP, zero derived amount, forward reference, invalid fraction, duplicate damage ID, protected/immune status, weaker burn/poison conflict, refresh with stronger magnitude, stage saturation, sleep/stun replacement, blind modifier, lethal residual, invalid RNG.
 

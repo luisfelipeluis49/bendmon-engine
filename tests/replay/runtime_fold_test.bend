@@ -20,13 +20,13 @@ def state() -> Runtime.RuntimeState:
     Model.AwaitingCommands{}}, Rng.RngState{1, 2, 3, 4},
     Runtime.WildEncounter{}, 0,
     [Sources.MoveSource{Model.ActorId{0n}, Math.MoveId{7n}, 0, False{}}],
-    Nil{}, Nil{}, [Runtime.DefenderSnapshot{Model.ActorId{1n}, profile()}]}
+    Nil{}, Nil{}, [Runtime.DefenderSnapshot{Model.ActorId{1n}, profile()}], None{}}
 
 def finished_code(result: Replay.RuntimeReplay) -> Nat:
   match result:
     case Replay.RuntimeReplayFinished{Runtime.RuntimeState{
         Model.BattleState{0, 60, actors, Nil{}, sequence, Model.Victory{}}, rng,
-        encounter, failed, sources, Nil{}, trapped, defenders}, emitted,
+        encounter, failed, sources, Nil{}, trapped, defenders, effects}, emitted,
         Runtime.RuntimeHit{Model.ActorId{0n}, Model.ActorId{1n}, 100, True{}}
           <> Nil{}}:
       1n

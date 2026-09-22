@@ -157,6 +157,12 @@ def rejection_code(result: Effects.EffectResult) -> Nat:
         U32.is_eq(hp_of(target), 200)))
     case _: 0n
 
+def predicate_forward_code(result: Effects.EffectResult) -> Nat:
+  match result:
+    case Effects.EffectsRejected{world_value, rng_value,
+        Effects.ForwardDamageReference{9n} <> rest}: 1n
+    case _: 0n
+
 def fault_code(result: Effects.EffectResult) -> Nat:
   match result:
     case Effects.EffectsFaulted{same_world, Rng.RngState{0, 0, 0, 0},
@@ -193,13 +199,13 @@ def damage_miss_stops_code(result: Effects.EffectResult) -> Nat:
 
 def branch_damage_rejected_code(result: Effects.EffectResult) -> Nat:
   match result:
-    case Effects.EffectsRejected{world, rng,
+    case Effects.EffectsRejected{world_value, rng_value,
         Effects.BranchDamageUnsupported{4n} <> rest}: 1n
     case _: 0n
 
 def zero_drain_code(result: Effects.EffectResult) -> Nat:
   match result:
-    case Effects.EffectsCommitted{world, rng,
+    case Effects.EffectsCommitted{world_value, rng_value,
         [Effects.DamageNoEffect{5n, Effects.Target{}, Effects.ZeroDamage{}},
          Effects.NoEffect{Effects.Source{}, Effects.ZeroDerived{}}],
         [Effects.DamageRecord{5n, 0}]}: 1n
@@ -207,7 +213,7 @@ def zero_drain_code(result: Effects.EffectResult) -> Nat:
 
 def burned_damage_code(result: Effects.EffectResult) -> Nat:
   match result:
-    case Effects.EffectsCommitted{world, rng,
+    case Effects.EffectsCommitted{world_value, rng_value,
         [Effects.DamageApplied{6n, Effects.Target{}, Effects.Physical{}, 37,
           False{}}], [Effects.DamageRecord{6n, 37}]}: 1n
     case _: 0n
@@ -217,6 +223,25 @@ def max_heal_code(actor: Effects.EffectActor) -> Nat:
     case Effects.EffectActor{4294967295, 4294967295, physical_defense,
         special_defense, stages, statuses, protected, immunities}: 1n
     case _: 0n
+
+def large_status_code(result: Maybe<&2, Effects.EffectActor>) -> Nat:
+  match result:
+    case Some{Effects.EffectActor{hp, 4294967295, physical_defense,
+        special_defense, stages,
+        [Effects.StatusInstance{Effects.Burn{}, 3, 268435455}], protected,
+        immunities}}: 1n
+    case _: 0n
+
+def large_poison_code(result: Maybe<&2, Effects.EffectActor>) -> Nat:
+  match result:
+    case Some{Effects.EffectActor{hp, 4294967295, physical_defense,
+        special_defense, stages,
+        [Effects.StatusInstance{Effects.Poison{}, 4, 536870911}], protected,
+        immunities}}: 1n
+    case _: 0n
+
+def residual_saturation_code(amount: U32) -> Nat:
+  bool_code(U32.is_eq(amount, 4294967295))
 
 def runtime_blocked_code(result: Effects.EffectResult) -> Nat:
   match result:
@@ -253,6 +278,12 @@ def main() -> List<&2, Nat>:
        [Effects.ModifyStat{Effects.Source{}, Effects.Attack{}, Effects.Raise{1}}],
        [Effects.ModifyStat{Effects.Source{}, Effects.Attack{}, Effects.Lower{1}}]}]}
     : Effects.EffectProgram}
+  +predicate_forward = {Effects.EffectProgram{
+    [Effects.Conditional{Effects.PriorDamagePositive{9n},
+       [Effects.Heal{Effects.Source{}, 1}],
+       [Effects.Heal{Effects.Source{}, 1}]},
+     Effects.Leaf{Effects.Damage{9n, Effects.Target{}, Effects.Physical{}, 50}}]}
+    : Effects.EffectProgram}
   [ordered_code(Effects.run(ordered_program(), world(), snapshot(), test_rng())),
    category_code(),
    poison_replaces_code(Effects.apply_status(Effects.Poison{}, make_actor(100, 100,
@@ -266,6 +297,8 @@ def main() -> List<&2, Nat>:
      [Effects.StatusInstance{Effects.Poison{}, 4, 12}], False{}, Nil{}))),
    upper_stage_code(Effects.apply_delta(Math.StageUp{5n}, Effects.Raise{6})),
    rejection_code(Effects.run(forward, world(), snapshot(), test_rng())),
+   predicate_forward_code(Effects.run(predicate_forward, world(), snapshot(),
+     test_rng())),
    fault_code(Effects.run(Effects.EffectProgram{[
      Effects.Leaf{Effects.Damage{1n, Effects.Target{}, Effects.Physical{}, 100}}]},
      world(), snapshot(), zero_rng)),
@@ -314,6 +347,13 @@ def main() -> List<&2, Nat>:
      world(), burned_snapshot(), test_rng())),
    max_heal_code(Effects.heal_actor(1, make_actor(4294967294, 4294967295,
      Nil{}, False{}, Nil{}))),
+   large_status_code(Effects.apply_status(Effects.Burn{},
+     make_actor(4294967295, 4294967295, Nil{}, False{}, Nil{}))),
+   large_poison_code(Effects.apply_status(Effects.Poison{},
+     make_actor(4294967295, 4294967295, Nil{}, False{}, Nil{}))),
+   residual_saturation_code(Effects.residual_damage(4294967295,
+     [Effects.StatusInstance{Effects.Burn{}, 3, 4294967295},
+      Effects.StatusInstance{Effects.Poison{}, 4, 4294967295}])),
    runtime_blocked_code(Runtime.runtime_effect_attempt(Effects.EffectProgram{[
      Effects.Leaf{Effects.Damage{8n, Effects.Target{}, Effects.Physical{}, 100}}]},
      Effects.EffectWorld{make_actor(40, 100,
@@ -321,4 +361,4 @@ def main() -> List<&2, Nat>:
        make_actor(200, 200, Nil{}, False{}, Nil{})}, snapshot(), test_rng(),
      True{}))]
 
-#| [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+#| [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]

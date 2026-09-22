@@ -51,12 +51,27 @@ type QueuedReservation is Data:
     reservation: SourceReservation,
     attacker: CombatProfile
   }
+  QueuedEffectMove{
+    sequence: Nat,
+    reservation: SourceReservation,
+    attacker: CombatProfile,
+    recoil: Nat,
+    program: Effects.EffectProgram,
+    snapshot: Effects.ActionSnapshot
+  }
   QueuedSwitch{sequence: Nat, source: Model.ActorId, incoming: Model.ActorId}
   QueuedEscape{
     sequence: Nat,
     source: Model.ActorId,
     player_speed: U32,
     enemy_speed: U32
+  }
+
+type RuntimeEffectState is Data:
+  RuntimeEffectState{
+    source: Model.ActorId,
+    target: Model.ActorId,
+    world: Effects.EffectWorld
   }
 
 type RuntimeState is Data:
@@ -68,7 +83,8 @@ type RuntimeState is Data:
     sources: List<&2, Sources.MoveSource>,
     reservations: List<&2, QueuedReservation>,
     trapped: List<&2, Model.ActorId>,
-    defenders: List<&2, DefenderSnapshot>
+    defenders: List<&2, DefenderSnapshot>,
+    effects: Maybe<&2, RuntimeEffectState>
   }
 
 type RuntimeCommand is Data:
@@ -82,6 +98,19 @@ type RuntimeCommand is Data:
     priority: Nat,
     recoil: Nat,
     attacker: CombatProfile
+  }
+  RuntimeEffectMove{
+    source: Model.ActorId,
+    target: Model.ActorId,
+    move: Math.MoveId,
+    windup: U32,
+    recovery: U32,
+    cooldown: U32,
+    priority: Nat,
+    recoil: Nat,
+    attacker: CombatProfile,
+    program: Effects.EffectProgram,
+    snapshot: Effects.ActionSnapshot
   }
   RuntimeWait{source: Model.ActorId}
   RuntimeSwitch{source: Model.ActorId, incoming: Model.ActorId}
@@ -101,6 +130,9 @@ def RuntimeCommand.actor(command: RuntimeCommand) -> Model.ActorId:
     case RuntimeMove{source, target, move, windup, recovery, cooldown, priority,
         recoil, attacker}:
       source
+    case RuntimeEffectMove{source, target, move, windup, recovery, cooldown,
+        priority, recoil, attacker, program, snapshot}:
+      source
     case RuntimeWait{source}:
       source
     case RuntimeSwitch{source, incoming}:
@@ -115,6 +147,10 @@ def runtime_model_command(command: RuntimeCommand) -> Model.Command:
   match command:
     case RuntimeMove{source, target, move, windup, recovery, cooldown, priority,
         recoil, attacker}:
+      Model.BattleMove{source, target, windup, recovery, cooldown, priority,
+        0n, recoil}
+    case RuntimeEffectMove{source, target, move, windup, recovery, cooldown,
+        priority, recoil, attacker, program, snapshot}:
       Model.BattleMove{source, target, windup, recovery, cooldown, priority,
         0n, recoil}
     case RuntimeWait{source}:
@@ -141,6 +177,9 @@ def runtime_source_requests(
       Nil{}
     case RuntimeMove{source, target, move, windup, recovery, cooldown,
         priority, recoil, attacker} <> rest:
+      Sources.SourceRequest{source, move} <> runtime_source_requests(rest)
+    case RuntimeEffectMove{source, target, move, windup, recovery, cooldown,
+        priority, recoil, attacker, program, snapshot} <> rest:
       Sources.SourceRequest{source, move} <> runtime_source_requests(rest)
     case command <> rest:
       runtime_source_requests(rest)
@@ -169,10 +208,44 @@ def duplicate_runtime_source(
           duplicate_runtime_source(rest,
             command_source_used(RuntimeCommand.actor(command), rest))
 
+def canonical_physical_state(burned: Bool) -> Effects.PhysicalDamageState:
+  match burned:
+    case True{}: Effects.BurnedPhysical{}
+    case False{}: Effects.NormalPhysical{}
+
+def canonical_effect_snapshot_status(
+  +values: List<&2, Effects.StatusInstance>,
+  snapshot: Effects.ActionSnapshot
+) -> Effects.ActionSnapshot:
+  match snapshot:
+    case Effects.ActionSnapshot{level, physical_attack, special_attack,
+        accuracy, accuracy_mode, physical_damage, critical_bonus}:
+      Effects.ActionSnapshot{level, physical_attack, special_attack,
+        Effects.accuracy_after_status(accuracy, values), accuracy_mode,
+        canonical_physical_state(Effects.status_present(Effects.Burn{}, values)),
+        critical_bonus}
+
+def canonical_effect_snapshot(
+  world: Effects.EffectWorld, snapshot: Effects.ActionSnapshot
+) -> Effects.ActionSnapshot:
+  match world:
+    case Effects.EffectWorld{source, target}:
+      canonical_effect_snapshot_status(Effects.actor_statuses(source), snapshot)
+
+def queued_effect_snapshot(
+  effects: Maybe<&2, RuntimeEffectState>, snapshot: Effects.ActionSnapshot
+) -> Effects.ActionSnapshot:
+  match effects:
+    case None{}:
+      snapshot
+    case Some{RuntimeEffectState{source, target, world}}:
+      canonical_effect_snapshot(world, snapshot)
+
 def append_reservations(
   commands: List<&2, RuntimeCommand>, +sequence: Nat,
   +player_speed: U32, +enemy_speed: U32,
-  out: List<&2, QueuedReservation>
+  out: List<&2, QueuedReservation>,
+  +effects: Maybe<&2, RuntimeEffectState>
 ) -> List<&2, QueuedReservation>:
   match commands:
     case Nil{}:
@@ -184,18 +257,25 @@ def append_reservations(
           QueuedMove{sequence, SourceReservation{source, move, target},
             attacker} <>
             append_reservations(rest, 1n+sequence, player_speed, enemy_speed,
-              out)
+              out, effects)
+        case RuntimeEffectMove{source, +target, move, windup, recovery,
+            cooldown, priority, recoil, attacker, program, snapshot}:
+          QueuedEffectMove{sequence,
+            SourceReservation{source, move, target}, attacker, recoil, program,
+            queued_effect_snapshot(effects, snapshot)} <>
+            append_reservations(rest, 1n+sequence, player_speed, enemy_speed,
+              out, effects)
         case RuntimeSwitch{source, incoming}:
           QueuedSwitch{sequence, source, incoming} <>
             append_reservations(rest, 1n+sequence, player_speed, enemy_speed,
-              out)
+              out, effects)
         case RuntimeEscape{source}:
           QueuedEscape{sequence, source, player_speed, enemy_speed} <>
             append_reservations(rest, 1n+sequence, player_speed, enemy_speed,
-              out)
+              out, effects)
         case RuntimeWait{source}:
           append_reservations(rest, 1n+sequence, player_speed, enemy_speed,
-            out)
+            out, effects)
 
 type RuntimeEvent is Data:
   RuntimeMiss{source: Model.ActorId, target: Model.ActorId, draw: U32}
@@ -203,6 +283,7 @@ type RuntimeEvent is Data:
   RuntimeHit{source: Model.ActorId, target: Model.ActorId, damage: U32, critical: Bool}
   RuntimeFizzle{source: Model.ActorId, target: Model.ActorId}
   RuntimeCancel{source: Model.ActorId, target: Model.ActorId}
+  RuntimeEffectsCommitted{events: List<&2, Effects.EffectEvent>}
 
 type ActionResult is Data:
   ActionCommitted{rng: Rng.RngState, event: RuntimeEvent}
@@ -418,10 +499,22 @@ def precheck_find_defender(
       precheck_defender_put(Model.ActorId.eq(target, actor), profile,
         precheck_find_defender(target, rest))
 
+def effect_state_matches(
+  source: Model.ActorId, target: Model.ActorId,
+  effects: Maybe<&2, RuntimeEffectState>
+) -> Bool:
+  match effects:
+    case None{}:
+      False{}
+    case Some{RuntimeEffectState{effect_source, effect_target, world}}:
+      Bool.and(Model.ActorId.eq(source, effect_source),
+        Model.ActorId.eq(target, effect_target))
+
 def runtime_command_in_state(
   command: RuntimeCommand, +battle: Model.BattleState,
   trapped: List<&2, Model.ActorId>,
-  defenders: List<&2, DefenderSnapshot>
+  defenders: List<&2, DefenderSnapshot>,
+  effects: Maybe<&2, RuntimeEffectState>
 ) -> Bool:
   match command:
     case RuntimeWait{source}:
@@ -432,6 +525,11 @@ def runtime_command_in_state(
         priority, recoil, attacker}:
       Bool.and(attacker_profile_ok(attacker),
         defender_found_ok(precheck_find_defender(target, defenders)))
+    case RuntimeEffectMove{source, +target, move, windup, recovery, cooldown,
+        priority, recoil, attacker, program, snapshot}:
+      Bool.and(Bool.and(attacker_profile_ok(attacker),
+          defender_found_ok(precheck_find_defender(target, defenders))),
+        effect_state_matches(source, target, effects))
     case RuntimeSwitch{+source, +incoming}:
       Bool.and(Bool.not(trapped_actor(source, trapped)),
         switch_found_ok(Scheduler.find_actor(source,
@@ -441,8 +539,8 @@ def runtime_command_in_state(
 def runtime_command_ok(command: RuntimeCommand, +state: RuntimeState) -> Bool:
   match state:
     case RuntimeState{battle, rng, encounter, failed, sources, reservations,
-        trapped, defenders}:
-      runtime_command_in_state(command, battle, trapped, defenders)
+        trapped, defenders, effects}:
+      runtime_command_in_state(command, battle, trapped, defenders, effects)
 
 def runtime_commands_ok(
   commands: List<&2, RuntimeCommand>, +state: RuntimeState
@@ -474,6 +572,9 @@ def semantic_diagnostic(
       [Model.SwitchInvalid{source, incoming}]
     case RuntimeMove{source, target, move, windup, recovery, cooldown, priority,
         recoil, attacker} <> rest:
+      [Model.TargetInvalid{source, target}]
+    case RuntimeEffectMove{source, target, move, windup, recovery, cooldown,
+        priority, recoil, attacker, program, snapshot} <> rest:
       [Model.TargetInvalid{source, target}]
     case command <> rest:
       [Model.ActorNotReady{RuntimeCommand.actor(command)}]
@@ -523,14 +624,14 @@ def queue_runtime_state(
 ) -> RuntimeState:
   match original:
     case RuntimeState{+battle, +rng, encounter, failed_escapes, old_sources,
-        +reservations, trapped, defenders}:
+        +reservations, trapped, defenders, +effects}:
       match battle:
         case Model.BattleState{now, wait_ticks, +actors, events, +sequence, status}:
           RuntimeState{next_battle, rng, encounter, failed_escapes, sources,
             append_reservations(commands, sequence,
               fastest_speed(Model.Player{}, actors),
-              fastest_speed(Model.Enemy{}, actors), reservations), trapped,
-            defenders}
+              fastest_speed(Model.Enemy{}, actors), reservations, effects), trapped,
+            defenders, effects}
 
 type RuntimeBattle is Data:
   RuntimeAdvanced{state: Model.BattleState, emitted: List<&2, Model.TransitionEvent>}
@@ -583,19 +684,19 @@ def runtime_submit_model(
 def runtime_battle(state: RuntimeState) -> Model.BattleState:
   match state:
     case RuntimeState{battle, rng, encounter, failed_escapes, sources,
-        reservations, trapped, defenders}:
+        reservations, trapped, defenders, effects}:
       battle
 
 def runtime_sources(state: RuntimeState) -> List<&2, Sources.MoveSource>:
   match state:
     case RuntimeState{battle, rng, encounter, failed_escapes, sources,
-        reservations, trapped, defenders}:
+        reservations, trapped, defenders, effects}:
       sources
 
 def runtime_now(state: RuntimeState) -> U32:
   match state:
     case RuntimeState{battle, rng, encounter, failed_escapes, sources,
-        reservations, trapped, defenders}:
+        reservations, trapped, defenders, effects}:
       match battle:
         case Model.BattleState{now, wait_ticks, actors, events, sequence, status}:
           now
@@ -634,7 +735,7 @@ def runtime_submit(
 ) -> RuntimeSubmitResult:
   match original:
     case RuntimeState{battle, rng, encounter, failed_escapes, sources,
-        reservations, trapped, defenders}:
+        reservations, trapped, defenders, effects}:
       +duplicate = duplicate_runtime_source(commands, False{})
       +trainer_escape = Bool.and(has_trainer_escape(commands),
         trainer_kind(encounter))
@@ -646,6 +747,9 @@ def runtime_submit(
 def queued_sequence(queued: QueuedReservation) -> Nat:
   match queued:
     case QueuedMove{sequence, reservation, attacker}:
+      sequence
+    case QueuedEffectMove{sequence, reservation, attacker, recoil, program,
+        snapshot}:
       sequence
     case QueuedSwitch{sequence, source, incoming}:
       sequence
@@ -723,6 +827,55 @@ def combine_profiles(
       CombatProfile{mode, accuracy, evasion, power, level, attack, defense,
         critical_bonus}
 
+def sync_effect_actor_hp(
+  found: Maybe<&2, Model.Actor>, actor: Effects.EffectActor
+) -> Effects.EffectActor:
+  match found actor:
+    case None{} actor:
+      actor
+    case Some{Model.Actor{id, side, hp, speed, phase, cooldown}}
+        Effects.EffectActor{ignored_hp, max_hp, physical_defense,
+        special_defense, stages, statuses, protected, immunities}:
+      Effects.EffectActor{U32.from_nat(hp), max_hp, physical_defense,
+        special_defense, stages, statuses, protected, immunities}
+
+def sync_effect_world_hps(
+  +source_id: Model.ActorId, +target_id: Model.ActorId,
+  +world: Effects.EffectWorld, +actors: List<&2, Model.Actor>
+) -> Effects.EffectWorld:
+  match world:
+    case Effects.EffectWorld{+source, +target}:
+      +source_value = sync_effect_actor_hp(
+        Scheduler.find_actor(source_id, actors), source)
+      +target_value = sync_effect_actor_hp(
+        Scheduler.find_actor(target_id, actors), target)
+      Effects.EffectWorld{source_value, target_value}
+
+def sync_effect_optional(
+  effects: Maybe<&2, RuntimeEffectState>, actors: List<&2, Model.Actor>
+) -> Maybe<&2, RuntimeEffectState>:
+  match effects:
+    case None{}:
+      None{}
+    case Some{RuntimeEffectState{+source, +target, +world}}:
+      Some{RuntimeEffectState{source, target,
+        sync_effect_world_hps(source, target, world, actors)}}
+
+def runtime_update_scalar(
+  original: RuntimeState, battle: Model.BattleState, rng: Rng.RngState,
+  +failed_escapes: U32, sources: List<&2, Sources.MoveSource>,
+  reservations: List<&2, QueuedReservation>
+) -> RuntimeState:
+  match original:
+    case RuntimeState{old_battle, old_rng, encounter, old_failed, old_sources,
+        old_reservations, trapped, defenders, +effects}:
+      match battle:
+        case Model.BattleState{now, wait_ticks, +actors, events, sequence,
+            status}:
+          RuntimeState{battle, rng, encounter, failed_escapes, sources,
+            reservations, trapped, defenders, sync_effect_optional(effects,
+              actors)}
+
 def runtime_update(
   original: RuntimeState, battle: Model.BattleState, rng: Rng.RngState,
   +failed_escapes: U32, sources: List<&2, Sources.MoveSource>,
@@ -730,20 +883,20 @@ def runtime_update(
 ) -> RuntimeState:
   match original:
     case RuntimeState{old_battle, old_rng, encounter, old_failed, old_sources,
-        old_reservations, trapped, defenders}:
+        old_reservations, trapped, defenders, effects}:
       RuntimeState{battle, rng, encounter, failed_escapes, sources,
-        reservations, trapped, defenders}
+        reservations, trapped, defenders, effects}
 
 def runtime_rng(state: RuntimeState) -> Rng.RngState:
   match state:
     case RuntimeState{battle, rng, encounter, failed, sources, reservations,
-        trapped, defenders}:
+        trapped, defenders, effects}:
       rng
 
 def runtime_failed(state: RuntimeState) -> U32:
   match state:
     case RuntimeState{battle, rng, encounter, failed, sources, reservations,
-        trapped, defenders}:
+        trapped, defenders, effects}:
       failed
 
 def runtime_reservations(
@@ -751,13 +904,13 @@ def runtime_reservations(
 ) -> List<&2, QueuedReservation>:
   match state:
     case RuntimeState{battle, rng, encounter, failed, sources, reservations,
-        trapped, defenders}:
+        trapped, defenders, effects}:
       reservations
 
 def runtime_defenders(state: RuntimeState) -> List<&2, DefenderSnapshot>:
   match state:
     case RuntimeState{battle, rng, encounter, failed, sources, reservations,
-        trapped, defenders}:
+        trapped, defenders, effects}:
       defenders
 
 type RuntimeAdvanceResult is Data:
@@ -767,6 +920,10 @@ type RuntimeAdvanceResult is Data:
     combat_events: List<&2, RuntimeEvent>
   }
   RuntimeIdle{state: RuntimeState}
+  RuntimeEffectRejected{
+    state: RuntimeState,
+    diagnostics: List<&2, Effects.EffectDiagnostic>
+  }
   RuntimeFault{state: RuntimeState, reason: Maybe<&2, Rng.RngSampleResult>}
 
 def reservation_source(reservation: SourceReservation) -> Model.ActorId:
@@ -787,10 +944,10 @@ def reducer_commit(
 ) -> RuntimeAdvanceResult:
   match result:
     case Model.Advanced{battle, emitted}:
-      RuntimeStep{runtime_update(original, battle, rng, failed, sources,
+      RuntimeStep{runtime_update_scalar(original, battle, rng, failed, sources,
         reservations), emitted, combat_events}
     case Model.AdvanceIdle{battle}:
-      RuntimeIdle{runtime_update(original, battle, rng, failed, sources,
+      RuntimeIdle{runtime_update_scalar(original, battle, rng, failed, sources,
         reservations)}
 
 def cancel_move(
@@ -1165,7 +1322,7 @@ def execute_escape_ready(
     case True{}:
       match original:
         case RuntimeState{battle, rng, encounter, failed, sources, reservations,
-            trapped, defenders}:
+            trapped, defenders, effects}:
           escape_result_commit(escape_attempt(encounter, rng, failed,
             player_speed, enemy_speed), original, tick, actor, recovery,
             sequence, remaining)
@@ -1201,6 +1358,171 @@ def reducer_step_runtime(+original: RuntimeState) -> RuntimeAdvanceResult:
     runtime_reservations(original), runtime_failed(original), Nil{},
     Reducer.step(runtime_battle(original)))
 
+def effect_phase_nonzero(phase: Model.Phase) -> Model.Phase:
+  match phase:
+    case Model.Defeated{}: Model.Ready{}
+    case other: other
+
+def effect_phase_for_zero(zero: Bool, phase: Model.Phase) -> Model.Phase:
+  match zero:
+    case True{}: Model.Defeated{}
+    case False{}: effect_phase_nonzero(phase)
+
+def effect_phase_for_hp(+hp: U32, phase: Model.Phase) -> Model.Phase:
+  effect_phase_for_zero(U32.is_zero(hp), phase)
+
+def effect_hp_for_actors(
+  source_equal: Bool, target_equal: Bool,
+  source_actor: Effects.EffectActor, target_actor: Effects.EffectActor,
+  fallback: U32
+) -> U32:
+  match source_equal target_equal:
+    case True{} _: Effects.actor_hp(source_actor)
+    case False{} True{}: Effects.actor_hp(target_actor)
+    case False{} False{}: fallback
+
+def effect_hp_for_match(
+  source_equal: Bool, target_equal: Bool, world: Effects.EffectWorld,
+  fallback: U32
+) -> U32:
+  match world:
+    case Effects.EffectWorld{source_actor, target_actor}:
+      effect_hp_for_actors(source_equal, target_equal, source_actor,
+        target_actor, fallback)
+
+def effect_hp_for_actor(
+  +wanted: Model.ActorId, source: Model.ActorId, target: Model.ActorId,
+  world: Effects.EffectWorld, fallback: U32
+) -> U32:
+  effect_hp_for_match(Model.ActorId.eq(wanted, source),
+    Model.ActorId.eq(wanted, target), world, fallback)
+
+def sync_effect_actor(
+  +wanted: Model.ActorId, +source: Model.ActorId, +target: Model.ActorId,
+  +world: Effects.EffectWorld, actors: List<&2, Model.Actor>
+) -> List<&2, Model.Actor>:
+  match actors:
+    case Nil{}:
+      Nil{}
+    case +actor <> rest:
+      match actor:
+        case Model.Actor{+id, +side, +hp, +speed, +phase, +cooldown}:
+          +fallback = U32.from_nat(hp)
+          +next_hp = effect_hp_for_actor(wanted, source, target, world, fallback)
+          Model.Actor{id, side, U32.to_nat(next_hp), speed,
+            effect_phase_for_hp(next_hp, phase), cooldown} <>
+            sync_effect_actor(wanted, source, target, world, rest)
+
+def sync_effect_actors(
+  +source: Model.ActorId, +target: Model.ActorId, +world: Effects.EffectWorld,
+  actors: List<&2, Model.Actor>
+) -> List<&2, Model.Actor>:
+  sync_effect_actor(target, source, target, world,
+    sync_effect_actor(source, source, target, world, actors))
+
+def effect_damage_total(records: List<&2, Effects.DamageRecord>) -> Nat:
+  match records:
+    case Nil{}:
+      0n
+    case Effects.DamageRecord{node, actual} <> rest:
+      Nat.add(U32.to_nat(actual), effect_damage_total(rest))
+
+def runtime_update_effect(
+  original: RuntimeState, battle: Model.BattleState, rng: Rng.RngState,
+  +failed_escapes: U32, sources: List<&2, Sources.MoveSource>,
+  reservations: List<&2, QueuedReservation>, world: Effects.EffectWorld
+) -> RuntimeState:
+  match original:
+    case RuntimeState{old_battle, old_rng, encounter, old_failed, old_sources,
+        old_reservations, trapped, defenders, effects}:
+      match effects:
+        case None{}:
+          RuntimeState{battle, rng, encounter, failed_escapes, sources,
+            reservations, trapped, defenders, None{}}
+        case Some{RuntimeEffectState{source, target, old_world}}:
+          RuntimeState{battle, rng, encounter, failed_escapes, sources,
+            reservations, trapped, defenders,
+            Some{RuntimeEffectState{source, target, world}}}
+
+def effect_commit_transition(
+  result: Model.AdvanceResult, +original: RuntimeState, +rng: Rng.RngState,
+  events: List<&2, Effects.EffectEvent>, +tick: U32, +cooldown: U32,
+  +sequence: Nat, world: Effects.EffectWorld,
+  +reservation: SourceReservation
+) -> RuntimeAdvanceResult:
+  match result:
+    case Model.Advanced{battle, emitted}:
+      RuntimeStep{runtime_update_effect(original, battle, rng,
+        runtime_failed(original),
+        Sources.charge_source(reservation_source(reservation),
+          reservation_move(reservation), U32.add(tick, cooldown),
+          runtime_sources(original)),
+        remove_queued(sequence, runtime_reservations(original)), world),
+        emitted, [RuntimeEffectsCommitted{events}]}
+    case Model.AdvanceIdle{battle}:
+      RuntimeIdle{runtime_update_effect(original, battle, rng,
+        runtime_failed(original), runtime_sources(original),
+        remove_queued(sequence, runtime_reservations(original)), world)}
+
+def effect_commit_world(
+  +world: Effects.EffectWorld, rng: Rng.RngState,
+  events: List<&2, Effects.EffectEvent>,
+  records: List<&2, Effects.DamageRecord>, +original: RuntimeState,
+  +tick: U32, +actor: Model.ActorId, +target: Model.ActorId,
+  +recovery: U32, +cooldown: U32, +sequence: Nat,
+  remaining: List<&2, Model.BattleEvent>, +reservation: SourceReservation
+) -> RuntimeAdvanceResult:
+  match original:
+    case RuntimeState{+battle_state, old_rng, encounter, failed, sources,
+        reservations, trapped, defenders, effects}:
+      match battle_state:
+        case Model.BattleState{now, wait_ticks, +actors, +pending,
+            +next_sequence, status}:
+          +synced = sync_effect_actors(actor, target, world, actors)
+          +ready_tick = U32.add(tick, recovery)
+          +recovered = Reducer.set_recovery(actor, ready_tick,
+            U32.add(tick, 0), synced)
+          effect_commit_transition(Reducer.finish_action(
+            Reducer.battle_status(recovered), tick, wait_ticks, recovered,
+            remaining, next_sequence,
+            Model.BattleActionExecuted{actor, target,
+              effect_damage_total(records), 0n},
+            Reducer.schedule_ready(tick, actor, recovery, next_sequence)),
+            original, rng, events, tick, cooldown, sequence, world, reservation)
+
+def effect_commit_result(
+  result: Effects.EffectResult, +original: RuntimeState, +tick: U32,
+  +actor: Model.ActorId, +target: Model.ActorId, +recovery: U32,
+  +cooldown: U32, +sequence: Nat, remaining: List<&2, Model.BattleEvent>,
+  +reservation: SourceReservation
+) -> RuntimeAdvanceResult:
+  match result:
+    case Effects.EffectsCommitted{world, rng, events, damage}:
+      effect_commit_world(world, rng, events, damage, original, tick, actor,
+        target, recovery, cooldown, sequence, remaining, reservation)
+    case Effects.EffectsRejected{world, rng, diagnostics}:
+      RuntimeEffectRejected{original, diagnostics}
+    case Effects.EffectsFaulted{world, rng, reason}:
+      RuntimeFault{original, Some{reason}}
+
+def execute_effect_queued(
+  +reservation: SourceReservation, program: Effects.EffectProgram,
+  snapshot: Effects.ActionSnapshot, +original: RuntimeState, +tick: U32,
+  +actor: Model.ActorId, +target: Model.ActorId, +recovery: U32,
+  +cooldown: U32, +sequence: Nat, remaining: List<&2, Model.BattleEvent>
+) -> RuntimeAdvanceResult:
+  match original:
+    case RuntimeState{battle, rng, encounter, failed, sources, reservations,
+        trapped, defenders, effects}:
+      match effects:
+        case None{}:
+          RuntimeFault{original, None{}}
+        case Some{RuntimeEffectState{source, effect_target, world}}:
+          effect_commit_result(Effects.attempt(program, world, snapshot, rng,
+            True{}), original,
+            tick, actor, target, recovery, cooldown, sequence, remaining,
+            reservation)
+
 def execute_move_queued(
   queued: QueuedReservation, +original: RuntimeState, +tick: U32,
   +actor: Model.ActorId, +target: Model.ActorId, +recovery: U32,
@@ -1211,6 +1533,10 @@ def execute_move_queued(
     case QueuedMove{queued_seq, reservation, attacker}:
       execute_queued_move(reservation, attacker, original, tick, actor, target,
         recovery, cooldown, recoil, sequence, remaining)
+    case QueuedEffectMove{queued_seq, reservation, attacker, queued_recoil,
+        program, snapshot}:
+      execute_effect_queued(reservation, program, snapshot, original, tick,
+        actor, target, recovery, cooldown, sequence, remaining)
     case _:
       RuntimeFault{original, None{}}
 
@@ -1347,7 +1673,7 @@ def runtime_step_events(
 def runtime_step(+original: RuntimeState) -> RuntimeAdvanceResult:
   match original:
     case RuntimeState{+battle, rng, encounter, failed, sources, reservations,
-        trapped, defenders}:
+        trapped, defenders, effects}:
       match battle:
         case Model.BattleState{now, wait_ticks, actors, +events, sequence,
             status}:
@@ -1373,6 +1699,10 @@ type RuntimeRunResult is Data:
     state: RuntimeState,
     emitted: List<&2, Model.TransitionEvent>,
     combat_events: List<&2, RuntimeEvent>
+  }
+  RuntimeRunRejected{
+    state: RuntimeState,
+    diagnostics: List<&2, Effects.EffectDiagnostic>
   }
   RuntimeRunFault{
     state: RuntimeState,
@@ -1400,6 +1730,10 @@ type RuntimeCursor is Data:
     emitted: List<&2, Model.TransitionEvent>,
     combat_events: List<&2, RuntimeEvent>
   }
+  RuntimeCursorRejected{
+    state: RuntimeState,
+    diagnostics: List<&2, Effects.EffectDiagnostic>
+  }
   RuntimeCursorFault{
     state: RuntimeState,
     reason: Maybe<&2, Rng.RngSampleResult>
@@ -1408,7 +1742,7 @@ type RuntimeCursor is Data:
 def runtime_status(state: RuntimeState) -> Model.BattleStatus:
   match state:
     case RuntimeState{battle, rng, encounter, failed, sources, reservations,
-        trapped, defenders}:
+        trapped, defenders, effects}:
       match battle:
         case Model.BattleState{now, wait_ticks, actors, events, sequence,
             status}:
@@ -1448,6 +1782,8 @@ def runtime_after_step(
         List.append(&2, RuntimeEvent, prior_combat, combat_events))
     case RuntimeIdle{state}:
       RuntimeCursorActive{state, prior_emitted, prior_combat}
+    case RuntimeEffectRejected{state, diagnostics}:
+      RuntimeCursorRejected{state, diagnostics}
     case RuntimeFault{state, reason}:
       RuntimeCursorFault{state, reason}
 
@@ -1461,6 +1797,8 @@ def runtime_run_one(cursor: RuntimeCursor, ignored: Nat) -> RuntimeCursor:
       RuntimeCursorTerminal{state, emitted, combat_events}
     case RuntimeCursorStalled{state, emitted, combat_events}:
       RuntimeCursorStalled{state, emitted, combat_events}
+    case RuntimeCursorRejected{state, diagnostics}:
+      RuntimeCursorRejected{state, diagnostics}
     case RuntimeCursorFault{state, reason}:
       RuntimeCursorFault{state, reason}
 
@@ -1474,6 +1812,8 @@ def runtime_run_result(cursor: RuntimeCursor) -> RuntimeRunResult:
       RuntimeRunTerminal{state, emitted, combat_events}
     case RuntimeCursorStalled{state, emitted, combat_events}:
       RuntimeRunStalled{state, emitted, combat_events}
+    case RuntimeCursorRejected{state, diagnostics}:
+      RuntimeRunRejected{state, diagnostics}
     case RuntimeCursorFault{state, reason}:
       RuntimeRunFault{state, reason}
 

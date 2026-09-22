@@ -146,6 +146,19 @@ law effect_burn_physical_modifier:
     [Effects.StatusInstance{Effects.Burn{}, 3, 6}]) == 75 : U32}
 
 
+# EFFECT-ATTEMPT-DET: status blocking, action effects and optional aftermath
+# remain deterministic at the production runtime boundary.
+law effect_attempt_deterministic:
+  for program: Effects.EffectProgram
+  for world: Effects.EffectWorld
+  for snapshot: Effects.ActionSnapshot
+  for rng: Rng.RngState
+  for aftermath: Bool
+  {Effects.attempt(program, world, snapshot, rng, aftermath) ==
+    Effects.attempt(program, world, snapshot, rng, aftermath)
+    : Effects.EffectResult}
+
+
 # Approved future proof obligations (2026-09-21 decision packet):
 #
 # MIX-CD: ceil(3*c/2) strictly exceeds every legal ordinary cooldown c and

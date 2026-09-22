@@ -78,7 +78,7 @@ def runtime_state() -> Runtime.RuntimeState:
     Rng.RngState{1, 2, 3, 4}, Runtime.WildEncounter{}, 0,
     [Sources.MoveSource{Model.ActorId{0n}, Math.MoveId{7n}, 0, False{}}],
     Nil{}, Nil{},
-    [Runtime.DefenderSnapshot{Model.ActorId{1n}, profile()}]}
+    [Runtime.DefenderSnapshot{Model.ActorId{1n}, profile()}], None{}}
 
 def runtime_reject_code(result: Runtime.RuntimeSubmitResult) -> Nat:
   match result:
@@ -87,7 +87,7 @@ def runtime_reject_code(result: Runtime.RuntimeSubmitResult) -> Nat:
           Model.AwaitingCommands{}}, Rng.RngState{1, 2, 3, 4},
         Runtime.WildEncounter{}, 0,
         Sources.MoveSource{Model.ActorId{0n}, Math.MoveId{7n}, 0, False{}}
-          <> Nil{}, Nil{}, Nil{}, defenders},
+          <> Nil{}, Nil{}, Nil{}, defenders, effects},
         Model.SourceReserved{Model.ActorId{0n}} <> Nil{}}:
       1n
     case _:
@@ -105,7 +105,7 @@ def runtime_move_code(result: Runtime.RuntimeSubmitResult) -> Nat:
         Runtime.WildEncounter{}, 0, sources,
         Runtime.QueuedMove{0n,
           Runtime.SourceReservation{Model.ActorId{0n}, Math.MoveId{7n},
-            Model.ActorId{1n}}, attacker} <> Nil{}, trapped, defenders}, emitted}:
+            Model.ActorId{1n}}, attacker} <> Nil{}, trapped, defenders, effects}, emitted}:
       1n
     case _:
       0n
@@ -122,7 +122,7 @@ def runtime_move_run_code(result: Runtime.RuntimeRunResult) -> Nat:
         Model.BattleState{0, 60, actors, Nil{}, sequence, Model.Victory{}}, rng,
         encounter, failed,
         Sources.MoveSource{owner, move, 60, False{}} <> Nil{}, Nil{}, trapped,
-        defenders}, emitted,
+        defenders, effects}, emitted,
         Runtime.RuntimeHit{Model.ActorId{0n}, Model.ActorId{1n}, 100, True{}}
           <> Nil{}}:
       1n
@@ -151,17 +151,17 @@ def switch_state() -> Runtime.RuntimeState:
        actor(1n, Model.Enemy{}, Model.Ready{})], Nil{}, 0n,
       Model.AwaitingCommands{}},
     Rng.RngState{1, 2, 3, 4}, Runtime.WildEncounter{}, 0, Nil{}, Nil{}, Nil{},
-    [Runtime.DefenderSnapshot{Model.ActorId{1n}, profile()}]}
+    [Runtime.DefenderSnapshot{Model.ActorId{1n}, profile()}], None{}}
 
 def switch_run_code(result: Runtime.RuntimeRunResult) -> Nat:
   match result:
     case Runtime.RuntimeRunBoundary{Runtime.RuntimeState{
-        Model.BattleState{30, 60,
+          Model.BattleState{30, 60,
           Model.Actor{Model.ActorId{0n}, side0, hp0, speed0, Model.Benched{}, cd0}
             <> Model.Actor{Model.ActorId{2n}, side2, hp2, speed2,
               Model.Ready{}, cd2} <> rest,
           events, sequence, Model.AwaitingCommands{}}, rng, encounter, failed,
-        sources, Nil{}, trapped, defenders}, emitted, combat}:
+        sources, Nil{}, trapped, defenders, effects}, emitted, combat}:
       1n
     case _:
       0n
@@ -176,7 +176,7 @@ def escape_run_code(result: Runtime.RuntimeRunResult) -> Nat:
   match result:
     case Runtime.RuntimeRunTerminal{Runtime.RuntimeState{
         Model.BattleState{0, 60, actors, Nil{}, sequence, Model.Escaped{}}, rng,
-        encounter, failed, sources, Nil{}, trapped, defenders}, emitted, combat}:
+        encounter, failed, sources, Nil{}, trapped, defenders, effects}, emitted, combat}:
       1n
     case _:
       0n
@@ -195,14 +195,14 @@ def escape_failure_state() -> Runtime.RuntimeState:
        Model.Actor{Model.ActorId{1n}, Model.Enemy{}, 10n, 9999n,
          Model.Ready{}, 0}], Nil{}, 0n, Model.AwaitingCommands{}},
     Rng.RngState{1, 2, 3, 4}, Runtime.WildEncounter{}, 0, Nil{}, Nil{}, Nil{},
-    [Runtime.DefenderSnapshot{Model.ActorId{1n}, profile()}]}
+    [Runtime.DefenderSnapshot{Model.ActorId{1n}, profile()}], None{}}
 
 def escape_failure_code(result: Runtime.RuntimeRunResult) -> Nat:
   match result:
     case Runtime.RuntimeRunBoundary{Runtime.RuntimeState{
         Model.BattleState{30, 60, actors, events, sequence,
           Model.AwaitingCommands{}}, Rng.RngState{7, 0, 1026, 12288},
-        Runtime.WildEncounter{}, 1, sources, Nil{}, trapped, defenders},
+        Runtime.WildEncounter{}, 1, sources, Nil{}, trapped, defenders, effects},
         emitted, Nil{}}:
       1n
     case _:
@@ -219,10 +219,10 @@ def with_defender(
 ) -> Runtime.RuntimeState:
   match state:
     case Runtime.RuntimeState{battle, rng, encounter, failed, sources,
-        reservations, trapped, old_defenders}:
+        reservations, trapped, old_defenders, effects}:
       Runtime.RuntimeState{battle, rng, encounter, failed, sources,
         reservations, trapped,
-        [Runtime.DefenderSnapshot{Model.ActorId{1n}, defender}]}
+        [Runtime.DefenderSnapshot{Model.ActorId{1n}, defender}], effects}
 
 def no_damage_run_code(result: Runtime.RuntimeRunResult) -> Nat:
   match result:
@@ -251,7 +251,7 @@ def trapped_state() -> Runtime.RuntimeState:
       Model.AwaitingCommands{}},
     Rng.RngState{1, 2, 3, 4}, Runtime.WildEncounter{}, 0, Nil{}, Nil{},
     [Model.ActorId{0n}],
-    [Runtime.DefenderSnapshot{Model.ActorId{1n}, profile()}]}
+    [Runtime.DefenderSnapshot{Model.ActorId{1n}, profile()}], None{}}
 
 def trapped_reject_code(result: Runtime.RuntimeSubmitResult) -> Nat:
   match result:
@@ -271,15 +271,15 @@ def with_encounter(
 ) -> Runtime.RuntimeState:
   match state:
     case Runtime.RuntimeState{battle, rng, old_encounter, failed, sources,
-        reservations, trapped, defenders}:
+        reservations, trapped, defenders, effects}:
       Runtime.RuntimeState{battle, rng, encounter, failed, sources,
-        reservations, trapped, defenders}
+        reservations, trapped, defenders, effects}
 
 def unavailable_submit_code(result: Runtime.RuntimeSubmitResult) -> Nat:
   match result:
     case Runtime.RuntimeSubmitRejected{Runtime.RuntimeState{battle,
         Rng.RngState{1, 2, 3, 4}, encounter, 0, sources, Nil{}, trapped,
-        defenders}, Model.EscapeUnavailable{Model.ActorId{0n}} <> Nil{}}:
+        defenders, effects}, Model.EscapeUnavailable{Model.ActorId{0n}} <> Nil{}}:
       1n
     case _:
       0n
@@ -293,9 +293,9 @@ def unavailable_submit_test(kind: Runtime.EncounterKind) -> Nat:
 def zero_rng_from(state: Runtime.RuntimeState) -> Runtime.RuntimeState:
   match state:
     case Runtime.RuntimeState{battle, rng, encounter, failed, sources,
-        reservations, trapped, defenders}:
+        reservations, trapped, defenders, effects}:
       Runtime.RuntimeState{battle, Rng.RngState{0, 0, 0, 0}, encounter,
-        failed, sources, reservations, trapped, defenders}
+        failed, sources, reservations, trapped, defenders, effects}
 
 def zero_rng_state() -> Runtime.RuntimeState:
   zero_rng_from(runtime_state())
@@ -314,7 +314,7 @@ def rng_fault_code(result: Runtime.RuntimeRunResult) -> Nat:
           <> Nil{},
         Runtime.QueuedMove{0n, Runtime.SourceReservation{
           Model.ActorId{0n}, Math.MoveId{7n}, Model.ActorId{1n}}, attacker}
-          <> Nil{}, trapped, defenders},
+          <> Nil{}, trapped, defenders, effects},
         Some{Rng.RngInvalidState{Rng.RngState{0, 0, 0, 0}}}}:
       1n
     case _:
@@ -339,7 +339,7 @@ def dual_source_state() -> Runtime.RuntimeState:
     Nil{}, Nil{},
     [Runtime.DefenderSnapshot{Model.ActorId{1n},
       Runtime.CombatProfile{Math.AlwaysHit{}, Math.StageNeutral{},
-        Math.StageNeutral{}, 100, 50, 100, 9999, 1875}}]}
+        Math.StageNeutral{}, 100, 50, 100, 9999, 1875}}], None{}}
 
 def independent_source_code(result: Runtime.RuntimeSubmitResult) -> Nat:
   match result:
@@ -348,7 +348,7 @@ def independent_source_code(result: Runtime.RuntimeSubmitResult) -> Nat:
         Runtime.WildEncounter{}, 0,
         Sources.MoveSource{Model.ActorId{0n}, Math.MoveId{7n}, 60, False{}} <>
         Sources.MoveSource{Model.ActorId{0n}, Math.MoveId{8n}, 0, True{}}
-          <> Nil{}, reservations, trapped, defenders}, emitted}:
+          <> Nil{}, reservations, trapped, defenders, effects}, emitted}:
       1n
     case _:
       0n
@@ -362,6 +362,8 @@ def boundary_state(result: Runtime.RuntimeRunResult) -> Runtime.RuntimeState:
     case Runtime.RuntimeRunStalled{state, emitted, combat}:
       state
     case Runtime.RuntimeRunYielded{state, emitted, combat}:
+      state
+    case Runtime.RuntimeRunRejected{state, diagnostics}:
       state
     case Runtime.RuntimeRunFault{state, reason}:
       state

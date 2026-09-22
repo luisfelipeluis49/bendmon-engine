@@ -2,6 +2,7 @@ import Base
 import ../battle/model.bend as Model
 import ../battle/runtime.bend as Runtime
 import ../battle/rng.bend as Rng
+import ../battle/effects.bend as Effects
 
 type RuntimeReplay is Data:
   RuntimeReplayFinished{
@@ -12,6 +13,10 @@ type RuntimeReplay is Data:
   RuntimeReplayRejected{
     state: Runtime.RuntimeState,
     diagnostics: List<&2, Model.Diagnostic>
+  }
+  RuntimeReplayEffectRejected{
+    state: Runtime.RuntimeState,
+    diagnostics: List<&2, Effects.EffectDiagnostic>
   }
   RuntimeReplayFault{
     state: Runtime.RuntimeState,
@@ -38,6 +43,10 @@ type RuntimeFold is Data:
   RuntimeFoldRejected{
     state: Runtime.RuntimeState,
     diagnostics: List<&2, Model.Diagnostic>
+  }
+  RuntimeFoldEffectRejected{
+    state: Runtime.RuntimeState,
+    diagnostics: List<&2, Effects.EffectDiagnostic>
   }
   RuntimeFoldFault{
     state: Runtime.RuntimeState,
@@ -79,6 +88,8 @@ def fold_run(
     case Runtime.RuntimeRunYielded{state, emitted, combat}:
       RuntimeFoldExhausted{state, append_transition(prior_emitted, emitted),
         append_combat(prior_combat, combat)}
+    case Runtime.RuntimeRunRejected{state, diagnostics}:
+      RuntimeFoldEffectRejected{state, diagnostics}
     case Runtime.RuntimeRunFault{state, reason}:
       RuntimeFoldFault{state, reason}
 
@@ -105,6 +116,8 @@ def fold_one(
       RuntimeFoldFinished{state, emitted, combat}
     case RuntimeFoldRejected{state, diagnostics}:
       RuntimeFoldRejected{state, diagnostics}
+    case RuntimeFoldEffectRejected{state, diagnostics}:
+      RuntimeFoldEffectRejected{state, diagnostics}
     case RuntimeFoldFault{state, reason}:
       RuntimeFoldFault{state, reason}
     case RuntimeFoldExhausted{state, emitted, combat}:
@@ -118,6 +131,8 @@ def fold_result(current: RuntimeFold) -> RuntimeReplay:
       RuntimeReplayFinished{state, emitted, combat}
     case RuntimeFoldRejected{state, diagnostics}:
       RuntimeReplayRejected{state, diagnostics}
+    case RuntimeFoldEffectRejected{state, diagnostics}:
+      RuntimeReplayEffectRejected{state, diagnostics}
     case RuntimeFoldFault{state, reason}:
       RuntimeReplayFault{state, reason}
     case RuntimeFoldExhausted{state, emitted, combat}:

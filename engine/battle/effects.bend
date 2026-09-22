@@ -447,13 +447,23 @@ def stages_valid(stages: StatStages) -> Bool:
         Math.stage_ok(special_defense), Bool.and(Math.stage_ok(speed),
         Bool.and(Math.stage_ok(accuracy), Math.stage_ok(evasion)))))))
 
-def status_magnitude_valid(status: StatusId, +magnitude: U32,
-  +maximum: U32) -> Bool:
+def status_magnitude_limit(status: StatusId, +duration: U32) -> U32:
+  match status:
+    # Expected-residual comparison multiplies duration by magnitude. This
+    # bound keeps that product exact for every accepted U32 actor state.
+    case Burn{}: U32.div(4294967295, U32.max(1, duration))
+    case Poison{}: U32.div(4294967295, U32.max(1, duration))
+    case _: 4294967295
+
+def status_magnitude_valid(status: StatusId, +duration: U32,
+  +magnitude: U32, +maximum: U32) -> Bool:
   match status:
     case Burn{}: Bool.and(U32.is_ge(magnitude,
-      U32.max(1, U32.div(maximum, 16))), U32.is_le(magnitude, 9999))
+      status_magnitude(Burn{}, maximum)), U32.is_le(magnitude,
+      status_magnitude_limit(Burn{}, duration)))
     case Poison{}: Bool.and(U32.is_ge(magnitude,
-      U32.max(1, U32.div(maximum, 8))), U32.is_le(magnitude, 9999))
+      status_magnitude(Poison{}, maximum)), U32.is_le(magnitude,
+      status_magnitude_limit(Poison{}, duration)))
     case Sleep{}: U32.is_eq(magnitude, 0)
     case Stun{}: U32.is_eq(magnitude, 0)
     case Blind{}: Bool.and(U32.is_ge(magnitude, 2), U32.is_le(magnitude, 6))
@@ -463,7 +473,7 @@ def status_instance_valid(+maximum: U32, instance: StatusInstance) -> Bool:
     case StatusInstance{+status, +duration, magnitude}:
       Bool.and(Bool.and(U32.is_ge(duration, 1),
         U32.is_le(duration, status_duration(status))),
-        status_magnitude_valid(status, magnitude, maximum))
+        status_magnitude_valid(status, duration, magnitude, maximum))
 
 def no_conflict(conflict: StatusConflict) -> Bool:
   match conflict:
@@ -502,15 +512,27 @@ def accuracy_after_status(stage: Math.Stage,
 def blocks_action(+values: List<&2, StatusInstance>) -> Bool:
   Bool.or(status_present(Sleep{}, values), status_present(Stun{}, values))
 
+def saturating_add_overflow(overflow: Bool, +left: U32, +right: U32) -> U32:
+  match overflow:
+    case True{}: 4294967295
+    case False{}: U32.add(left, right)
+
+def saturating_add(+left: U32, +right: U32) -> U32:
+  saturating_add_overflow(U32.is_gt(left, U32.sub(4294967295, right)),
+    left, right)
+
+def residual_add(+maximum: U32, +current: U32, +next: U32) -> U32:
+  U32.min(maximum, saturating_add(current, next))
+
 def residual_damage(+maximum: U32,
   values: List<&2, StatusInstance>) -> U32:
   match values:
     case Nil{}: 0
     case StatusInstance{Burn{}, duration, magnitude} <> rest:
-      U32.add(U32.max(1, magnitude),
+      residual_add(maximum, U32.max(1, magnitude),
         residual_damage(maximum, rest))
     case StatusInstance{Poison{}, duration, magnitude} <> rest:
-      U32.add(U32.max(1, magnitude),
+      residual_add(maximum, U32.max(1, magnitude),
         residual_damage(maximum, rest))
     case instance <> rest: residual_damage(maximum, rest)
 
@@ -684,11 +706,17 @@ def validate_leaves(effects: List<&2, LeafEffect>,
     case effect <> rest: validate_leaves(rest,
       validate_branch_leaf(effect, validation))
 
+def validate_predicate(predicate: Predicate,
+  validation: Validation) -> Validation:
+  match predicate:
+    case PriorDamagePositive{node}: validate_ref(node, validation)
+    case _: validation
+
 def validate_effect(effect: Effect, validation: Validation) -> Validation:
   match effect:
     case Leaf{leaf}: validate_leaf(leaf, validation)
     case Conditional{predicate, then_effects, else_effects}:
-      +after_node = add_cost(validation)
+      +after_node = validate_predicate(predicate, add_cost(validation))
       +after_then = validate_leaves(then_effects, after_node)
       validate_leaves(else_effects, after_then)
 

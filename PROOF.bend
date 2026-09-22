@@ -56,3 +56,6 @@ def Laws.effect_status_duration_catalog():
 
 def Laws.effect_burn_physical_modifier():
   {==}
+
+def Laws.effect_attempt_deterministic(program, world, snapshot, rng, aftermath):
+  {==}

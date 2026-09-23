@@ -27,12 +27,16 @@ ticks and unchanged refreshes do not award Harmony. Accepted Harmony accuracy
 and critical bonuses are derived from learned progress at the command barrier;
 the ordinary critical cap remains 2500.
 
-`python3 scripts/verify.py` passes 158 local checks, including the prior
+`python3 scripts/verify.py` passes 159 local checks, including the prior
 milestones, the canonical proof gate, M6 recipe/source/learning/eligibility and
 runtime/ledger/driver goldens, strict fixture-oracle checks, and a native/JS
 pure-learning differential. The production checkpoint is commit `dfbbfd1` on
 `master`; hosted Ubuntu CI passed in
 [run 35817031631](https://github.com/luisfelipeluis49/bendmon-engine/actions/runs/35817031631).
+The later hosted documentation commit exposed a Bend interpreter machine-stack
+overflow in the unchanged roster golden. The gate now compiles that golden to
+a single-threaded native executable with the same expected output; the revised
+159-check suite passes locally.
 A separate GPT-6 Luna runtime review found missing
 Harmony snapshot injection and persistent learning wiring; both were added in
 this checkpoint. It also flagged the low-level `RuntimeMixedMove` constructor:

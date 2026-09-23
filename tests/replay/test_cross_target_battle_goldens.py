@@ -63,7 +63,10 @@ class CrossTargetBattleGoldenTests(unittest.TestCase):
             cwd=ROOT,
             capture_output=True,
             text=True,
-            timeout=60,
+            # The integrated battle runtime takes longer to compile on hosted
+            # Ubuntu than on the reference workstation; compilation remains
+            # bounded while the exact native/JS golden assertions stay intact.
+            timeout=180,
         )
         if result.returncode:
             raise AssertionError(

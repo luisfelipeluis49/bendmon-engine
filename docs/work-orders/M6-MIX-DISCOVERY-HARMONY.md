@@ -1,9 +1,9 @@
 # M6 mix, discovery and Harmony work orders
 
 Status: implementation in progress on 2026-09-23. M6-A and M6-B pure cores and
-the first M6-C production mixed battle/learning path pass locally. Runtime
-replay differential coverage, full content schema/proofs, hosted verification
-and formal milestone closeout remain pending. See
+the M6-C production mixed battle/learning path pass locally. The native/JS
+driver and queued cancellation/fizzle differential now pass; full content
+schema/proofs, latest hosted verification and formal milestone closeout remain pending. See
 `docs/architecture/M6-PROGRESS.md` for exact checkpoint evidence and limits.
 
 This is the controlling M6 work package. The approved semantics are D05, D06,

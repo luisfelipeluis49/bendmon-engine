@@ -3,6 +3,7 @@
   "catalogs": ["catalogs/starter.json"],
   "maps": ["maps/glade.json"],
   "encounters": ["encounters/glade-edge.json"],
+  "moves": [],
   "assets": [
     {
       "id": "original:mosskip-sprite",

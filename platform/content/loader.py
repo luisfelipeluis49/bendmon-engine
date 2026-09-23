@@ -14,7 +14,8 @@ from typing import Any, Callable, Iterable
 
 from .models import (Asset, AssetId, Catalog, CatalogId, Encounter,
                      EncounterEntry, EncounterId, LoadedProject, MapId,
-                     MapRecord, Project, ProjectId, Species, SpeciesId)
+                     MapRecord, MoveId, MoveRecord, Project, ProjectId,
+                     Species, SpeciesId)
 
 SCHEMA = "content-0"
 MAX_JSON_BYTES = 1 << 20
@@ -140,10 +141,11 @@ def _pointer_token(value: str) -> str:
     return value.replace("~", "~0").replace("/", "~1")
 
 
-def _object(value: Any, required: set[str], file: str, pointer: str) -> dict[str, Any]:
+def _object(value: Any, required: set[str], file: str, pointer: str,
+            optional: set[str] | None = None) -> dict[str, Any]:
     if not isinstance(value, dict):
         _fail("shape", file, pointer, "expected object")
-    unknown, missing = set(value) - required, required - set(value)
+    unknown, missing = set(value) - required - (optional or set()), required - set(value)
     if unknown:
         _fail("unknown-field", file, pointer + "/" + _pointer_token(sorted(unknown)[0]), "unknown field")
     if missing:
@@ -326,15 +328,16 @@ def load_project(path: os.PathLike[str] | str, kernel_path: os.PathLike[str] | s
             _fail("ruleset", "project.json", "/ruleset", 'ruleset must be "unassigned"')
         project = Project(ProjectId(_id(p["id"], "project.json", "/id")), _string(p["name"], "project.json", "/name"),
                           "unassigned", MapId(_id(p["entryMap"], "project.json", "/entryMap")))
-        m = _object(_doc(root, "manifest.json"), {"schemaVersion", "catalogs", "maps", "encounters", "assets"}, "manifest.json", "")
+        m = _object(_doc(root, "manifest.json"), {"schemaVersion", "catalogs", "maps", "encounters", "assets"}, "manifest.json", "", {"moves"})
         catalog_paths = [_valid_path(v, ".json", "manifest.json", f"/catalogs/{i}") for i, v in enumerate(_array(m["catalogs"], "manifest.json", "/catalogs"))]
         map_paths = [_valid_path(v, ".json", "manifest.json", f"/maps/{i}") for i, v in enumerate(_array(m["maps"], "manifest.json", "/maps"))]
         encounter_paths = [_valid_path(v, ".json", "manifest.json", f"/encounters/{i}") for i, v in enumerate(_array(m["encounters"], "manifest.json", "/encounters"))]
-        all_docs = catalog_paths + map_paths + encounter_paths
+        move_paths = [_valid_path(v, ".json", "manifest.json", f"/moves/{i}") for i, v in enumerate(_array(m.get("moves", []), "manifest.json", "/moves"))]
+        all_docs = catalog_paths + map_paths + encounter_paths + move_paths
         if len(all_docs) > MAX_FILES:
             _fail("file-count", "manifest.json", "", "manifest references more than 64 files")
         _unique(all_docs, "manifest.json", "", "manifest path")
-        catalog_paths.sort(); map_paths.sort(); encounter_paths.sort()
+        catalog_paths.sort(); map_paths.sort(); encounter_paths.sort(); move_paths.sort()
         assets: list[Asset] = []
         asset_values = _array(m["assets"], "manifest.json", "/assets")
         for i, raw_asset in enumerate(asset_values):
@@ -357,6 +360,35 @@ def load_project(path: os.PathLike[str] | str, kernel_path: os.PathLike[str] | s
             if len(body) != asset.bytes or hashlib.sha256(body).hexdigest() != asset.sha256:
                 _fail("asset-integrity", asset.path, "", "asset byte size or SHA-256 does not match manifest", asset.id)
             _parse_ppm(body, asset.path)
+
+        assets_by_id = {str(a.id) for a in assets}
+        moves: list[MoveRecord] = []
+        for rel in move_paths:
+            raw_move = _doc(root, rel)
+            d = _object(raw_move, {"schemaVersion", "id", "name", "windup", "recovery", "cooldown", "animation"}, rel, "", {"accuracy", "alwaysHit"})
+            mid = MoveId(_id(d["id"], rel, "/id"))
+            name = _string(d["name"], rel, "/name")
+            has_accuracy, has_always = "accuracy" in d, "alwaysHit" in d
+            if has_accuracy == has_always:
+                _fail("accuracy-mode", rel, "", "specify exactly one of accuracy or alwaysHit")
+            if has_accuracy:
+                accuracy = _uint(d["accuracy"], 500, 10000, rel, "/accuracy")
+                always_hit = False
+            else:
+                if d["alwaysHit"] is not True:
+                    _fail("accuracy-mode", rel, "/alwaysHit", "alwaysHit must be true")
+                accuracy, always_hit = None, True
+            windup = _uint(d["windup"], 0, 600, rel, "/windup")
+            recovery = _uint(d["recovery"], 30, 600, rel, "/recovery")
+            cooldown = _uint(d["cooldown"], 60, 3600, rel, "/cooldown")
+            animation = AssetId(_id(d["animation"], rel, "/animation"))
+            if str(animation) not in assets_by_id:
+                _fail("reference", rel, "/animation", "animation asset does not resolve", mid)
+            moves.append(MoveRecord(mid, name, accuracy, always_hit, windup, recovery, cooldown, animation))
+        if len(moves) > MAX_ENTITIES:
+            _fail("entity-limit", "manifest.json", "/moves", "more than 256 moves")
+        _unique([str(v.id) for v in moves], "manifest.json", "/moves", "move ID")
+        moves.sort(key=lambda v: str(v.id))
 
         catalogs: list[Catalog] = []
         species_locations: list[tuple[Species, str, int]] = []
@@ -425,9 +457,15 @@ def load_project(path: os.PathLike[str] | str, kernel_path: os.PathLike[str] | s
                      "catalogs": [{"schemaVersion": SCHEMA, "id": str(c.id), "species": [{"id": str(s.id), "name": s.name, "sprite": str(s.sprite)} for s in sorted(c.species, key=lambda x: str(x.id))]} for c in catalogs],
                      "encounters": [{"schemaVersion": SCHEMA, "id": str(e.id), "entries": [{"species": str(x.species), "level": x.level} for x in e.entries]} for e, _ in encounters_loc],
                      "maps": [{"schemaVersion": SCHEMA, "id": str(v.id), "name": v.name, "width": v.width, "height": v.height, "encounters": list(v.encounters)} for v, _ in maps_loc]}
+        if moves:
+            canonical["moves"] = [{"schemaVersion": SCHEMA, "id": str(v.id), "name": v.name,
+                                    **({"alwaysHit": True} if v.always_hit else {"accuracy": v.accuracy}),
+                                    "windup": v.windup, "recovery": v.recovery,
+                                    "cooldown": v.cooldown, "animation": str(v.animation)}
+                                   for v in moves]
         canonical_bytes = json.dumps(canonical, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
         return LoadedProject(project, tuple(assets), tuple(catalogs), tuple(v[0] for v in species_locations),
-                             tuple(v[0] for v in encounters_loc), tuple(v[0] for v in maps_loc), canonical_bytes,
+                             tuple(v[0] for v in encounters_loc), tuple(v[0] for v in maps_loc), tuple(moves), canonical_bytes,
                              hashlib.sha256(canonical_bytes).hexdigest())
     finally:
         root.close()

@@ -25,7 +25,7 @@ class SchemaPatternTests(unittest.TestCase):
             if isinstance(value, dict):
                 if value.get('type') == 'object':
                     self.assertIs(value.get('additionalProperties'), False)
-                    self.assertEqual(set(value.get('properties', {})), set(value.get('required', [])))
+                    self.assertLessEqual(set(value.get('required', [])), set(value.get('properties', {})))
                 for child in value.values():
                     walk(child)
             elif isinstance(value, list):

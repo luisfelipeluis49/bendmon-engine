@@ -261,10 +261,51 @@ def runtime_kind(result: Driver.DrivenRunResult) -> Nat:
     case Driver.DrivenRunResult{Runtime.RuntimeRunStalled{_, _, _}, _}: 4n
     case _: 5n
 
+def initial_ledgers() -> List<&2, Ledger.IndividualLedger>:
+  [initial_ledger(), Ledger.empty(MixModel.MonsterId{12n})]
+
+def roster_terminal_observed(result: Driver.DrivenRosterResult) -> Bool:
+  match result:
+    case Driver.DrivenRosterResult{
+      Runtime.RuntimeRunTerminal{state, emitted, combat_events},
+      [Ledger.IndividualLedger{
+         Learning.LearningState{MixModel.MonsterId{11n},
+           [MixModel.RecipeId{3n}],
+           [Learning.LearnedRecipe{MixModel.RecipeId{3n}, 1}]},
+         [], completed_a},
+       Ledger.IndividualLedger{
+         Learning.LearningState{MixModel.MonsterId{12n},
+           [MixModel.RecipeId{3n}], []}, [], completed_b}]}:
+      True{}
+    case _: False{}
+
+def roster_terminal_merge() -> Bool:
+  roster_terminal_observed(Driver.process_roster_result(catalog(),
+    terminalize_result(real_runtime_result()), initial_ledgers()))
+
+def roster_rejected_preserved(result: Driver.DrivenRosterResult) -> Bool:
+  match result:
+    case Driver.DrivenRosterResult{Runtime.RuntimeRunRejected{state,
+        diagnostics},
+      [Ledger.IndividualLedger{
+         Learning.LearningState{MixModel.MonsterId{11n},
+           [MixModel.RecipeId{3n}],
+           [Learning.LearnedRecipe{MixModel.RecipeId{3n}, 0}]}, [], []},
+       Ledger.IndividualLedger{
+         Learning.LearningState{MixModel.MonsterId{12n}, [], []}, [], []}]}:
+      True{}
+    case _: False{}
+
+def roster_rejection() -> Bool:
+  roster_rejected_preserved(Driver.process_roster_result(catalog(),
+    Runtime.RuntimeRunRejected{state(), []}, initial_ledgers()))
+
 def main() -> List<&2, Nat>:
   [runtime_kind(actual_drive()),
    U32.to_nat(Bool.to_u32(nonterminal_drive_check(actual_drive()))),
    U32.to_nat(Bool.to_u32(terminal_and_replay())),
    U32.to_nat(Bool.to_u32(rejected_fault_behavior())),
    U32.to_nat(Bool.to_u32(enemy_discovery())),
-   U32.to_nat(Bool.to_u32(multiple_event_fold()))]
+   U32.to_nat(Bool.to_u32(multiple_event_fold())),
+   U32.to_nat(Bool.to_u32(roster_terminal_merge())),
+   U32.to_nat(Bool.to_u32(roster_rejection()))]

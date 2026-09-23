@@ -10,6 +10,7 @@ SpeciesId = NewType("SpeciesId", str)
 AssetId = NewType("AssetId", str)
 EncounterId = NewType("EncounterId", str)
 MapId = NewType("MapId", str)
+MoveId = NewType("MoveId", str)
 
 
 @dataclass(frozen=True, slots=True)
@@ -56,6 +57,18 @@ class MapRecord:
 
 
 @dataclass(frozen=True, slots=True)
+class MoveRecord:
+    id: MoveId
+    name: str
+    accuracy: int | None
+    always_hit: bool
+    windup: int
+    recovery: int
+    cooldown: int
+    animation: AssetId
+
+
+@dataclass(frozen=True, slots=True)
 class Project:
     id: ProjectId
     name: str
@@ -71,5 +84,6 @@ class LoadedProject:
     species: tuple[Species, ...]
     encounters: tuple[Encounter, ...]
     maps: tuple[MapRecord, ...]
+    moves: tuple[MoveRecord, ...]
     canonical_json: bytes
     content_hash: str

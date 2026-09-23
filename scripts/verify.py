@@ -138,7 +138,10 @@ def main():
         output='True{}')
     run('M6 mixed runtime and learning driver golden',
         ['bend', 'tests/m6/driver_test.bend'],
-        output='[1n, 1n, 1n, 1n, 1n, 1n]', timeout=180)
+        output='[1n, 1n, 1n, 1n, 1n, 1n, 1n, 1n]', timeout=180)
+    run('M6 queued mixed cancellation and fizzle golden',
+        ['bend', 'tests/m6/queued_mix_edges_test.bend'],
+        output='[1n, 1n, 1n]')
     run('M6 pure fixture and cross-target suite', [sys.executable, '-m',
         'unittest', 'tests.m6.test_core_fixtures',
         'tests.m6.test_cross_target_core', '-v'], timeout=180)

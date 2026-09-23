@@ -8,6 +8,9 @@ from typing import Any
 
 
 RULESET_VERSION = "m3-1"
+LEGACY_RULESET_VERSION = RULESET_VERSION
+M6_RULESET_VERSION = "m6-1"
+SUPPORTED_REPLAY_RULESETS = (RULESET_VERSION, M6_RULESET_VERSION)
 RNG_VERSION = "xoshiro128ss-1.1"
 _DIGEST = re.compile(r"[0-9a-f]{64}\Z")
 
@@ -25,8 +28,8 @@ class BattleReplayHeader:
     rng_state: tuple[int, int, int, int]
 
     def __post_init__(self) -> None:
-        if self.ruleset_version != RULESET_VERSION:
-            raise BattleReplayError("ruleset version mismatch")
+        if type(self.ruleset_version) is not str or self.ruleset_version not in SUPPORTED_REPLAY_RULESETS:
+            raise BattleReplayError(f"unsupported replay ruleset version: {self.ruleset_version!r}")
         if type(self.content_digest) is not str or not _DIGEST.fullmatch(
             self.content_digest
         ):
@@ -53,8 +56,19 @@ class BattleReplayHeader:
 
 
 def require_exact_identity(
-    header: BattleReplayHeader, *, content_digest: str
+    header: BattleReplayHeader,
+    *,
+    content_digest: str,
+    ruleset_version: str = RULESET_VERSION,
 ) -> None:
-    """Reject replay reinterpretation under any different project content."""
+    """Require the caller's exact semantics and project content identity."""
+    if header.ruleset_version != ruleset_version:
+        raise BattleReplayError(
+            "ruleset version mismatch: "
+            f"expected {ruleset_version!r}, actual {header.ruleset_version!r}"
+        )
     if header.content_digest != content_digest:
-        raise BattleReplayError("project content identity mismatch")
+        raise BattleReplayError(
+            "project content identity mismatch: "
+            f"expected {content_digest!r}, actual {header.content_digest!r}"
+        )

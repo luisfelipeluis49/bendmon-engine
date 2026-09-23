@@ -1,19 +1,20 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "content-0/move.schema.json",
-  "title": "Content-0 move timing and presentation descriptor",
+  "$id": "content-0/mix-result.schema.json",
+  "title": "Content-0 authored mix result descriptor",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schemaVersion", "id", "name", "windup", "recovery", "cooldown", "animation"],
+  "required": ["schemaVersion", "id", "name", "components", "power", "windup", "recovery", "cooldown", "animation"],
   "properties": {
     "schemaVersion": {"const": "content-0"},
     "id": {"$ref": "#/$defs/id"},
     "name": {"type": "string", "minLength": 1, "maxLength": 128},
+    "components": {"type": "array", "minItems": 1, "maxItems": 4, "uniqueItems": true, "items": {"type": "integer", "minimum": 0, "maximum": 9}},
+    "power": {"type": "integer", "minimum": 1, "maximum": 200},
     "windup": {"type": "integer", "minimum": 0, "maximum": 600},
     "recovery": {"type": "integer", "minimum": 30, "maximum": 600},
     "cooldown": {"type": "integer", "minimum": 60, "maximum": 3600},
     "animation": {"$ref": "#/$defs/id"},
-    "components": {"type": "array", "minItems": 1, "maxItems": 4, "uniqueItems": true, "items": {"type": "integer", "minimum": 0, "maximum": 9}},
     "accuracy": {"type": "integer", "minimum": 500, "maximum": 10000},
     "alwaysHit": {"const": true}
   },
@@ -21,6 +22,7 @@
     {"required": ["accuracy"], "not": {"required": ["alwaysHit"]}},
     {"required": ["alwaysHit"], "not": {"required": ["accuracy"]}}
   ],
+  "$comment": "This is inert timing, power, accuracy, component and presentation metadata. It contains no effect program or executable behavior. Animation must resolve to a manifest asset.",
   "$defs": {
     "id": {"type": "string", "pattern": "^[a-z][a-z0-9_-]{0,31}:[a-z][a-z0-9_-]{0,31}$"}
   }

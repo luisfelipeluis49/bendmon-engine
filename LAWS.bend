@@ -245,6 +245,19 @@ law harmony_award_replay_idempotent:
     Harmony.AwardState{5, [9n]}) == Harmony.AwardState{5, [9n]}
     : Harmony.AwardState}
 
+# HARM-AWARD-REPLAY-ALL: action zero already at the head of the completion
+# ledger is a replay for every progress value, outcome, and remaining ledger.
+# This quantifies the production award boundary without claiming that an
+# arbitrary save ledger is well-formed or duplicate-free.
+law harmony_award_head_replay:
+  for progress: U32
+  for successful_effect: Bool
+  for completed: List<&2, Nat>
+  {Harmony.award_once(True{}, successful_effect, 0n,
+      Harmony.AwardState{progress, 0n <> completed}) ==
+    Harmony.AwardState{Harmony.progress_cap(progress), 0n <> completed}
+    : Harmony.AwardState}
+
 # HARM-CAP: a successful new committed action at the progress ceiling records
 # its identity but cannot increase progress beyond the production cap.
 law harmony_award_saturates:

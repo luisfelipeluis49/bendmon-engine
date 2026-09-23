@@ -1573,6 +1573,13 @@ def effect_hp_for_actor(
   effect_hp_for_match(Model.ActorId.eq(wanted, source),
     Model.ActorId.eq(wanted, target), world, fallback)
 
+def sync_matching_actor_hp(equal: Bool, wanted: Model.ActorId,
+  source: Model.ActorId, target: Model.ActorId,
+  world: Effects.EffectWorld, fallback: U32) -> U32:
+  match equal:
+    case True{}: effect_hp_for_actor(wanted, source, target, world, fallback)
+    case False{}: fallback
+
 def sync_effect_actor(
   +wanted: Model.ActorId, +source: Model.ActorId, +target: Model.ActorId,
   +world: Effects.EffectWorld, actors: List<&2, Model.Actor>
@@ -1584,7 +1591,8 @@ def sync_effect_actor(
       match actor:
         case Model.Actor{+id, +side, +hp, +speed, +phase, +cooldown}:
           +fallback = U32.from_nat(hp)
-          +next_hp = effect_hp_for_actor(wanted, source, target, world, fallback)
+          +next_hp = sync_matching_actor_hp(Model.ActorId.eq(id, wanted),
+            wanted, source, target, world, fallback)
           Model.Actor{id, side, U32.to_nat(next_hp), speed,
             effect_phase_for_hp(next_hp, phase), cooldown} <>
             sync_effect_actor(wanted, source, target, world, rest)

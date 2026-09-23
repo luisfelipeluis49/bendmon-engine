@@ -102,6 +102,9 @@ def Laws.harmony_progress_cap():
 def Laws.harmony_award_replay_idempotent():
   {==}
 
+def Laws.harmony_award_head_replay(progress, successful_effect, completed):
+  {==}
+
 def Laws.harmony_award_saturates():
   {==}
 

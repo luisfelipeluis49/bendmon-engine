@@ -47,7 +47,8 @@ def _unique_roster(roster_ids: Iterable[int]) -> tuple[int, ...]:
 
 
 def _validated_records(
-    roster: tuple[int, ...], records: Iterable[IndividualLearning]
+    roster: tuple[int, ...], records: Iterable[IndividualLearning],
+    known_recipe_ids: frozenset[int],
 ) -> tuple[IndividualLearning, ...]:
     try:
         materialized = tuple(records)
@@ -69,6 +70,11 @@ def _validated_records(
             raise LearningStateCodecError(f"duplicate observed recipe for individual {individual_id}")
         if observed != tuple(sorted(observed)):
             raise LearningStateCodecError(f"observed recipes are not canonical for individual {individual_id}")
+        unknown_observed = set(observed) - known_recipe_ids
+        if unknown_observed:
+            raise LearningStateCodecError(
+                f"unknown observed recipe for individual {individual_id}: {min(unknown_observed)}"
+            )
         harmony = tuple(record.harmony)
         harmony_ids: set[int] = set()
         for entry in harmony:
@@ -85,6 +91,10 @@ def _validated_records(
                     f"duplicate Harmony recipe for individual {individual_id}"
                 )
             harmony_ids.add(recipe_id)
+            if recipe_id not in known_recipe_ids:
+                raise LearningStateCodecError(
+                    f"unknown Harmony recipe for individual {individual_id}: {recipe_id}"
+                )
         if not harmony_ids.issubset(set(observed)):
             raise LearningStateCodecError(
                 f"Harmony recipe was not observed for individual {individual_id}"
@@ -99,18 +109,30 @@ def _validated_records(
     return tuple(by_id[individual_id] for individual_id in roster)
 
 
+def _known_recipes(recipe_ids: Iterable[int]) -> frozenset[int]:
+    try:
+        values = tuple(_uint(item, "known recipe ID") for item in recipe_ids)
+    except TypeError as exc:
+        raise LearningStateCodecError("known_recipe_ids must be iterable") from exc
+    if len(set(values)) != len(values):
+        raise LearningStateCodecError("duplicate known recipe ID")
+    return frozenset(values)
+
+
 def encode_learning_state(
     identity: SaveIdentity,
     roster_ids: Iterable[int],
     records: Iterable[IndividualLearning],
+    *,
+    known_recipe_ids: Iterable[int],
 ) -> bytes:
-    """Encode all roster members in roster order as canonical UTF-8 JSON."""
+    """Encode all roster members against the selected M6 recipe catalog."""
     if identity.ruleset_version != M6_RULESET_VERSION:
         raise LearningStateCodecError(
             f"M6 learning state requires ruleset {M6_RULESET_VERSION!r}"
         )
     roster = _unique_roster(roster_ids)
-    ordered = _validated_records(roster, records)
+    ordered = _validated_records(roster, records, _known_recipes(known_recipe_ids))
     value = {
         "identity": identity.canonical_value(),
         "participants": [
@@ -150,8 +172,10 @@ def decode_learning_state(
     encoded: bytes,
     expected_identity: SaveIdentity,
     roster_ids: Iterable[int],
+    *,
+    known_recipe_ids: Iterable[int],
 ) -> tuple[IndividualLearning, ...]:
-    """Decode canonical bytes after exact schema, ruleset and content checks."""
+    """Decode canonical bytes under exact identity and known recipe IDs."""
     if expected_identity.ruleset_version != M6_RULESET_VERSION:
         raise LearningStateCodecError(
             f"M6 learning state requires ruleset {M6_RULESET_VERSION!r}"
@@ -222,7 +246,7 @@ def decode_learning_state(
             )
         )
     roster = _unique_roster(roster_ids)
-    return _validated_records(roster, records)
+    return _validated_records(roster, records, _known_recipes(known_recipe_ids))
 
 
 __all__ = [

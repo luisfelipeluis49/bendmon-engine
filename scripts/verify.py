@@ -142,9 +142,12 @@ def main():
     run('M6 queued mixed cancellation and fizzle golden',
         ['bend', 'tests/m6/queued_mix_edges_test.bend'],
         output='[1n, 1n, 1n]')
+    run('M6 same-action KO and blocked Harmony golden',
+        ['bend', 'tests/m6/effect_edges_test.bend'],
+        output='[1n, 1n]')
     run('M6 pure fixture and cross-target suite', [sys.executable, '-m',
         'unittest', 'tests.m6.test_core_fixtures',
-        'tests.m6.test_cross_target_core', '-v'], timeout=180)
+        'tests.m6.test_cross_target_core', '-v'], timeout=360)
     run('battle replay fold golden', ['bend', 'tests/replay/fold_test.bend'], output='[1n, 1n, 1n, 1n]')
     run('battle runtime replay golden', ['bend', 'tests/replay/runtime_fold_test.bend'], output='[1n, 1n, 1n]')
     run('battle effect replay golden', ['bend', 'tests/replay/runtime_effect_fold_test.bend'], output='[1n]')

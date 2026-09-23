@@ -1,10 +1,10 @@
 # M6 mix, discovery and Harmony status
 
-Status: core scope complete locally on 2026-09-23; final hosted branch gate and
-master closeout are pending. The local `python3 scripts/verify.py` gate passes
-165 checks, including the canonical `PROOF.bend` gate and native/JavaScript M6
-goldens. The preceding 161-check checkpoint, commit `be842a4`, passed hosted
-Ubuntu CI in [run 35843191728](https://github.com/luisfelipeluis49/bendmon-engine/actions/runs/35843191728).
+Status: M6 core complete on 2026-09-23. The local
+`python3 scripts/verify.py` gate passes 165 checks, including the canonical
+`PROOF.bend` gate and native/JavaScript M6 goldens. The same gate passed hosted
+Ubuntu CI for closeout commit `2a54010` in
+[run 35878115619](https://github.com/luisfelipeluis49/bendmon-engine/actions/runs/35878115619).
 
 The M6 engine has typed recipe and result identities, one canonical unordered
 pair per recipe, one type component per source, 1–4 result components, and a

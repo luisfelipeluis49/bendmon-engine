@@ -1,96 +1,55 @@
-# M6 implementation progress
+# M6 mix, discovery and Harmony status
 
-Status: in progress on 2026-09-23. This is an incremental M6 checkpoint,
-not milestone completion.
+Status: core scope complete locally on 2026-09-23; final hosted branch gate and
+master closeout are pending. The local `python3 scripts/verify.py` gate passes
+165 checks, including the canonical `PROOF.bend` gate and native/JavaScript M6
+goldens. The preceding 161-check checkpoint, commit `be842a4`, passed hosted
+Ubuntu CI in [run 35843191728](https://github.com/luisfelipeluis49/bendmon-engine/actions/runs/35843191728).
 
-The typed recipe catalog, canonical unordered pair lookup, strict source/result
-validation, current-knowledge eligibility, post-battle training, observation
-history, and bounded per-individual Harmony core are implemented. Mixed command
-submission now passes through `mixing.runtime.submit_mix`, which validates the
-catalog, learned recipe, known sources, target and current source availability
-before lowering one command into the production battle runtime. That command
-reserves both sources in one batch; execution rechecks the actor and locked
-target, releases both sources on cancellation, and charges both checked
-`ceil(3*c/2)` cooldowns on a valid attempt or invalid-target fizzle.
+The M6 engine has typed recipe and result identities, one canonical unordered
+pair per recipe, one type component per source, 1–4 result components, and a
+validated catalog of registered closed M4 effect programs. Eligibility requires
+an observed, trained recipe, both current source moves, an available actor and
+locked target, and two available sources. Submission reserves both sources in
+one batch. Cancellation releases both without charge; invalid-target fizzle
+charges both without observation or RNG use. A valid attempt charges checked
+`ceil(3*c/2)` cooldowns and executes one registered M4/M5 result through one
+accuracy and critical transaction.
 
-A registered M4 damage effect enters one M5 component aggregate and one M4
-accuracy/critical transaction. The defender's HP and defense come from the
-execution-time effect world. Immutable type and current-move snapshots come
-from command acceptance. Live active/conscious witness status comes from the
-pre-effect battle roster, then the learning ledger filters witnesses for both
-source moves. A committed miss still stages observation. The runner folds
-committed mixed events into each caller-owned individual ledger, awards at most
-one Harmony point to the acting individual for a real intended program effect,
-and merges observations only when a terminal result commits. Status success is
-classified from the pre-action state and program event so aftermath duration
-ticks and unchanged refreshes do not award Harmony. Accepted Harmony accuracy
-and critical bonuses are derived from learned progress at the command barrier;
-the ordinary critical cap remains 2500.
+At valid execution start, active conscious combatants knowing both sources
+witness the mix, including on a miss or same-action KO. Battle-local ledgers
+fold every committed event for every participant; observations merge into each
+individual only at a committed terminal result. Post-battle training spends one
+token atomically and installs progress zero. Harmony awards at most one point
+per successful intended program effect and action identity, saturates at 40,
+and supplies tiered accuracy and critical bonuses captured at the command
+barrier. Misses, blocked or zero-damage attempts, full-HP healing, cancellation,
+fizzle and aftermath-only effects do not award progress. The ordinary critical
+cap remains 2500.
 
-`python3 scripts/verify.py` passes 159 local checks, including the prior
-milestones, the canonical proof gate, M6 recipe/source/learning/eligibility and
-runtime/ledger/driver goldens, strict fixture-oracle checks, and a native/JS
-pure-learning differential. The production checkpoint is commit `dfbbfd1` on
-`master`; hosted Ubuntu CI passed in
-[run 35817031631](https://github.com/luisfelipeluis49/bendmon-engine/actions/runs/35817031631).
-The later hosted documentation commit exposed a Bend interpreter machine-stack
-overflow in the unchanged roster golden. The gate now compiles that golden to
-a single-threaded native executable with the same expected output; the revised
-159-check suite passes locally and in hosted
-[run 35818263633](https://github.com/luisfelipeluis49/bendmon-engine/actions/runs/35818263633).
-A separate GPT-6 Luna runtime review found missing
-Harmony snapshot injection and persistent learning wiring; both were added in
-this checkpoint. It also flagged the low-level `RuntimeMixedMove` constructor:
-Bend does not hide the constructor, so the host must treat `Runtime.runtime_submit`
-as a trusted engine API and submit creator-derived mixes only through
-`mixing.runtime.submit_mix`. The latter is the validated content boundary.
+M6 regression goldens cover validation, source transactions, learning,
+training, threshold bonuses, roster-wide terminal merge, cancellation, fizzle,
+same-action KO, queued status blocking, all-zero typed damage, full-HP healing,
+and mixed command replay. The replay golden enters through production
+`mixing.runtime.submit_mix`, asserts exact battle/effect events and RNG state,
+and folds terminal learning. These runtime paths match in native and JavaScript.
+Independent GPT-6 Luna reviews found no unresolved production defect in the
+new replay and no-effect paths. Production-linked laws cover pair symmetry,
+two-source charge/rejection witnesses, witness filtering, Harmony replay and
+commit gates, saturation, and in-battle/atomic training rejection. The laws
+state their quantified or concrete scope explicitly; they do not claim a full
+universal proof of the entire battle runtime.
 
-The next integration slice folds each committed event across every
-participant's battle-local ledger and merges all of them at terminal battle
-results. A canonical host codec records every roster individual's observations
-and per-recipe Harmony progress under exact save schema, ruleset and content
-identity. It rejects missing or duplicate individuals, malformed progress,
-learned recipes without an observation, and IDs absent from the selected recipe
-catalog. The codec is a boundary component; no full save installation path
-exists yet. Replay/save mismatch diagnostics name both
-expected and actual identities. `m3-1` remains the active default; `m6-1` is
-explicitly selectable for M6 records until milestone closeout. An additive
-Content-0 move document validates authored timing, accuracy or always-hit,
-animation asset references and an optional source component. Additive recipe
-and result documents validate distinct unordered source pairs, separate result
-IDs, one component per source, 1–4 result components, power, accuracy, timing,
-and animation references. Reversing a source pair preserves canonical content
-identity. These documents are host metadata and do not yet bind a result to a
-registered M4 effect program. The original demo remains unassigned and
-existing content can omit these optional catalogs.
+New replay/save identity defaults to `m6-1`. Historical M3 fixtures explicitly
+retain `m3-1`, and cross-version ruleset/content mismatches are rejected with
+expected and actual identities. The canonical host learning codec validates
+every roster individual, recipe catalog membership, observation provenance,
+and bounded Harmony progress under exact save identity.
 
-The previous integrated checkpoint passed 160 local checks with
-`python3 scripts/verify.py`, including the full queued mixed-action golden and
-native/JavaScript differential. Hosted Ubuntu CI passed after increasing the
-cross-target battle compile timeout for the slower hosted runner in
-[run 35841702805](https://github.com/luisfelipeluis49/bendmon-engine/actions/runs/35841702805).
-The current checkpoint adds an effect-edge golden in both targets. A same-action
-mixed KO revealed that effect HP synchronization updated every actor instead
-of only the selected actor; the production battle runtime now matches actor IDs
-before updating HP, so the KO produces Victory and leaves the player conscious.
-The golden also covers a blocked direct effect and no Harmony award for a
-false-success completion. A quantified production-linked Harmony replay law
-covers progress, outcome and the rest of a completion ledger with a fixed
-action ID. The independent Luna review found no concrete defect in this slice.
-`python3 scripts/verify.py` passes 161 local checks for this checkpoint;
-hosted verification is pending.
-
-The native/JavaScript differential now covers the production M6 driver plus
-full queued mixed cancellation/fizzle transitions, and an independent Luna
-integration review found and resolved a premature ruleset-default switch.
-Additional checked production-call laws cover concrete Harmony thresholds,
-replay idempotence, mixed source charging and witness filtering. M6 still needs
-queued all-blocked/immune edge coverage, broader quantified MIX/LEARN/HARM laws,
-binding authored results to registered M4 effect programs, full save
-installation, final runtime/replay integration review, and a hosted gate for
-the current checkpoint. The project schema stays `unassigned` until a playable
-content ruleset is published.
-
-The existing `m3-1` replay identity remains active for prior fixtures. The
-reserved `m6-1` identity will become the default only when the full M6 runtime/replay
-boundary is complete.
+Content-0 can validate inert move, mix recipe and result metadata, but there is
+no host-to-Bend adapter that turns an authored mix result into a registered M4
+effect program. The M6 work order explicitly excludes host JSON loading from
+M6-A; production callers must supply a trusted validated Bend catalog and use
+`mixing.runtime.submit_mix`. This adapter, playable content ruleset, visual
+maker and full save installation are later integration work (M10/M11), not
+claims made by this M6 core milestone. The original demo remains `unassigned`.

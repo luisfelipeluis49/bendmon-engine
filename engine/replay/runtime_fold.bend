@@ -3,6 +3,8 @@ import ../battle/model.bend as Model
 import ../battle/runtime.bend as Runtime
 import ../battle/rng.bend as Rng
 import ../battle/effects.bend as Effects
+import ../mixing/runtime.bend as Mixing
+import ../mixing/eligibility.bend as Eligibility
 
 type RuntimeReplay is Data:
   RuntimeReplayFinished{
@@ -13,6 +15,10 @@ type RuntimeReplay is Data:
   RuntimeReplayRejected{
     state: Runtime.RuntimeState,
     diagnostics: List<&2, Model.Diagnostic>
+  }
+  RuntimeReplayMixRejected{
+    state: Runtime.RuntimeState,
+    reason: Eligibility.MixDiagnostic
   }
   RuntimeReplayEffectRejected{
     state: Runtime.RuntimeState,
@@ -144,3 +150,27 @@ def run(
 ) -> RuntimeReplay:
   fold_result(List.foldl(~&2, ~List<&2, Runtime.RuntimeCommand>, ~RuntimeFold,
     ~fold_one, batches, RuntimeFoldActive{initial, Nil{}, Nil{}, fuel}))
+
+# Continue replay from a state whose command barrier was already accepted by
+# a domain adapter such as Mixing.submit_mix. The ordinary batch API above
+# remains the path for callers submitting RuntimeCommand values directly.
+def run_queued(+fuel: Nat, +state: Runtime.RuntimeState) -> RuntimeReplay:
+  fold_result(fold_run(Nil{}, Nil{}, fuel, Runtime.runtime_run(fuel, state)))
+
+def finish_mixed_submit(+fuel: Nat, result: Mixing.MixSubmitResult) ->
+  RuntimeReplay:
+  match result:
+    case Mixing.MixSubmitAccepted{state, emitted}:
+      run_queued(fuel, state)
+    case Mixing.MixSubmitRejected{state, reason}:
+      RuntimeReplayMixRejected{state, reason}
+    case Mixing.MixSubmitRuntimeRejected{state, diagnostics}:
+      RuntimeReplayRejected{state, diagnostics}
+
+# Submit one mixed command through the production eligibility and runtime
+# barrier, then replay the accepted queued state through the runtime fold.
+def run_mixed(+fuel: Nat, +initial: Runtime.RuntimeState,
+  +request: Mixing.MixSubmitRequest,
+  other_commands: List<&2, Runtime.RuntimeCommand>) -> RuntimeReplay:
+  finish_mixed_submit(fuel,
+    Mixing.submit_mix(fuel, initial, request, other_commands))

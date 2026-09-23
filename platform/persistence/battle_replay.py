@@ -1,4 +1,4 @@
-"""Canonical M3 battle replay identity and initial-state boundary."""
+"""Canonical battle replay identity and initial-state boundary."""
 
 from __future__ import annotations
 
@@ -7,10 +7,10 @@ import re
 from typing import Any
 
 
-RULESET_VERSION = "m3-1"
-LEGACY_RULESET_VERSION = RULESET_VERSION
 M6_RULESET_VERSION = "m6-1"
-SUPPORTED_REPLAY_RULESETS = (RULESET_VERSION, M6_RULESET_VERSION)
+LEGACY_RULESET_VERSION = "m3-1"
+RULESET_VERSION = M6_RULESET_VERSION
+SUPPORTED_REPLAY_RULESETS = (LEGACY_RULESET_VERSION, RULESET_VERSION)
 RNG_VERSION = "xoshiro128ss-1.1"
 _DIGEST = re.compile(r"[0-9a-f]{64}\Z")
 

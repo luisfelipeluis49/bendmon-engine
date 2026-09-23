@@ -28,6 +28,20 @@ GOLDENS = (
     # A terminal same-action KO keeps its witness; blocked actions earn no Harmony.
     (ROOT / "tests" / "m6" / "effect_edges_test.bend",
      "[1n, 1n]\n"),
+    # The production queued mixed action is blocked by actor status, leaves
+    # target HP unchanged, and earns no Harmony.
+    (ROOT / "tests" / "m6" / "queued_mix_no_effect_test.bend",
+     "[1n]\n"),
+    # Legal chart-resolved components can all round to zero; the queued action
+    # reports no damage, leaves HP unchanged, and earns no Harmony.
+    (ROOT / "tests" / "m6" / "queued_zero_damage_test.bend",
+     "1n\n"),
+    # Full-HP source healing emits a no-effect reason and grants no Harmony.
+    (ROOT / "tests" / "m6" / "full_heal_test.bend",
+     "1n\n"),
+    # Replays production mixed submission, execution, and terminal learning.
+    (ROOT / "tests" / "m6" / "replay_test.bend",
+     "[1n, 1n, 1n]\n"),
 )
 
 

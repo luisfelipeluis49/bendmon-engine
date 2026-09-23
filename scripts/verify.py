@@ -126,6 +126,16 @@ def main():
         output='[True{}, True{}, True{}, True{}]')
     run('M6 learning core golden', ['bend', 'tests/m6/learning_test.bend'],
         output='[1n, 1n, 1n, 1n, 1n]')
+    run('M6 mixed runtime golden', ['bend', 'tests/m6/mixing_runtime_test.bend'],
+        output='[1n, 0n, 1n, 1n, 1n, 1n, 1n, 1n]')
+    run('M6 learning ledger golden', ['bend', 'tests/m6/ledger_test.bend'],
+        output='True{}')
+    run('M6 mixed runtime and learning driver golden',
+        ['bend', 'tests/m6/driver_test.bend'],
+        output='[1n, 1n, 1n, 1n, 1n, 1n]', timeout=180)
+    run('M6 pure fixture and cross-target suite', [sys.executable, '-m',
+        'unittest', 'tests.m6.test_core_fixtures',
+        'tests.m6.test_cross_target_core', '-v'], timeout=180)
     run('battle replay fold golden', ['bend', 'tests/replay/fold_test.bend'], output='[1n, 1n, 1n, 1n]')
     run('battle runtime replay golden', ['bend', 'tests/replay/runtime_fold_test.bend'], output='[1n, 1n, 1n]')
     run('battle effect replay golden', ['bend', 'tests/replay/runtime_effect_fold_test.bend'], output='[1n]')

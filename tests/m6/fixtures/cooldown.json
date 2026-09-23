@@ -1,0 +1,12 @@
+{
+  "fixture_version": "m6-core-1",
+  "id": "mixed-cooldown-boundaries",
+  "description": "Mixed cooldown uses ceil(3*c/2) through the odd/even and maximum boundaries.",
+  "kind": "cooldown",
+  "input": {
+    "ordinary": [60, 61, 62, 3599, 3600]
+  },
+  "expected": {
+    "mixed": [90, 92, 93, 5399, 5400]
+  }
+}

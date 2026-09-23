@@ -80,3 +80,6 @@ def Laws.harmony_familiar_package_reference():
 
 def Laws.mix_pair_symmetry_reference():
   {==}
+
+def Laws.mix_harmony_accuracy_reference():
+  {==}

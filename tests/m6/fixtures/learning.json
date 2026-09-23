@@ -1,0 +1,40 @@
+{
+  "fixture_version": "m6-core-1",
+  "id": "witness-training-transaction",
+  "description": "Execution snapshots active conscious witnesses; post-battle training is atomic and keeps history after source forgetting.",
+  "kind": "learning",
+  "input": {
+    "sources": [2, 5],
+    "witnesses": [
+      {"id": 9, "active": true, "conscious": true, "moves": [5, 2]},
+      {"id": 4, "active": false, "conscious": true, "moves": [2, 5]},
+      {"id": 2, "active": true, "conscious": true, "moves": [2, 5]},
+      {"id": 6, "active": true, "conscious": false, "moves": [2, 5]},
+      {"id": 8, "active": true, "conscious": true, "moves": [2]}
+    ],
+    "training": [
+      {"id": "success", "trainer": true, "in_battle": false, "tokens": 1, "observed": true, "learned": false, "has_sources": true, "compatible": true,
+       "accepted": true, "tokens_after": 0, "progress": 0, "reason": null},
+      {"id": "mid-battle", "trainer": true, "in_battle": true, "tokens": 1, "observed": true, "learned": false, "has_sources": true, "compatible": true,
+       "accepted": false, "tokens_after": 1, "progress": null, "reason": "in_battle"},
+      {"id": "no-trainer", "trainer": false, "in_battle": false, "tokens": 1, "observed": true, "learned": false, "has_sources": true, "compatible": true,
+       "accepted": false, "tokens_after": 1, "progress": null, "reason": "no_trainer"},
+      {"id": "no-token", "trainer": true, "in_battle": false, "tokens": 0, "observed": true, "learned": false, "has_sources": true, "compatible": true,
+       "accepted": false, "tokens_after": 0, "progress": null, "reason": "no_token"},
+      {"id": "unobserved", "trainer": true, "in_battle": false, "tokens": 1, "observed": false, "learned": false, "has_sources": true, "compatible": true,
+       "accepted": false, "tokens_after": 1, "progress": null, "reason": "not_observed"},
+      {"id": "already-learned", "trainer": true, "in_battle": false, "tokens": 1, "observed": true, "learned": true, "has_sources": true, "compatible": true,
+       "accepted": false, "tokens_after": 1, "progress": null, "reason": "already_learned"},
+      {"id": "forgotten-source", "trainer": true, "in_battle": false, "tokens": 1, "observed": true, "learned": false, "has_sources": false, "compatible": true,
+       "accepted": false, "tokens_after": 1, "progress": null, "reason": "missing_source"},
+      {"id": "incompatible", "trainer": true, "in_battle": false, "tokens": 1, "observed": true, "learned": false, "has_sources": true, "compatible": false,
+       "accepted": false, "tokens_after": 1, "progress": null, "reason": "missing_recipe"}
+    ],
+    "terminal_results": ["victory", "defeat", "draw", "timeout", "escaped"]
+  },
+  "expected": {
+    "witness_ids": [2, 9],
+    "observed_after_terminal": [2, 9],
+    "training_case_count": 8
+  }
+}

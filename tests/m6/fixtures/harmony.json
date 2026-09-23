@@ -1,0 +1,13 @@
+{
+  "fixture_version": "m6-core-1",
+  "id": "harmony-tier-boundaries",
+  "description": "Harmony progress saturates at 40 and derives its six exact bonus packages.",
+  "kind": "harmony",
+  "input": {
+    "progress": [0, 4, 5, 9, 10, 19, 20, 29, 30, 39, 40, 41]
+  },
+  "expected": {
+    "tiers": ["novice", "novice", "familiar", "familiar", "practiced", "practiced", "expert", "expert", "master", "master", "perfected", "perfected"],
+    "packages": [[0, 0], [0, 0], [100, 125], [100, 125], [200, 250], [200, 250], [300, 375], [300, 375], [400, 500], [400, 500], [500, 625], [500, 625]]
+  }
+}

@@ -1,7 +1,7 @@
 # M6 mix, discovery and Harmony work orders
 
-Status: M6-A–D core acceptance passes locally on 2026-09-23; hosted branch
-verification and formal master closeout remain pending. The native/JS driver,
+Status: M6-A–D core acceptance complete on 2026-09-23, locally and in hosted
+Ubuntu CI. The native/JS driver,
 queued cancellation/fizzle, same-action KO, blocked, zero-damage, full-heal and
 mixed replay differentials pass. Host JSON loading/program binding remains a
 later integration boundary outside M6-A's scope. See
@@ -310,8 +310,8 @@ Reviewer and evidence: independent GPT-6 Luna reviews of the runtime/replay,
 identity and no-effect paths found no unresolved production defect. The full
 local `python3 scripts/verify.py` gate passes 165 checks, including
 `./scripts/bend PROOF.bend`, native/JavaScript M6 differentials, and the
-M0–M5 regression gates. Final hosted branch run and master commit/run links
-will be recorded after hosted verification.
+M0–M5 regression gates. Closeout commit `2a54010` passed the same hosted Ubuntu
+gate in [run 35878115619](https://github.com/luisfelipeluis49/bendmon-engine/actions/runs/35878115619).
 
 Escalation: implementation defects are fixed within these contracts. Any change
 to the approved decisions, law meaning, RNG schedule, M4/M5 ownership or

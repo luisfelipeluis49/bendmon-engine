@@ -30,7 +30,10 @@ the ordinary critical cap remains 2500.
 `python3 scripts/verify.py` passes 158 local checks, including the prior
 milestones, the canonical proof gate, M6 recipe/source/learning/eligibility and
 runtime/ledger/driver goldens, strict fixture-oracle checks, and a native/JS
-pure-learning differential. A separate GPT-6 Luna runtime review found missing
+pure-learning differential. The production checkpoint is commit `dfbbfd1` on
+`master`; hosted Ubuntu CI passed in
+[run 35817031631](https://github.com/luisfelipeluis49/bendmon-engine/actions/runs/35817031631).
+A separate GPT-6 Luna runtime review found missing
 Harmony snapshot injection and persistent learning wiring; both were added in
 this checkpoint. It also flagged the low-level `RuntimeMixedMove` constructor:
 Bend does not hide the constructor, so the host must treat `Runtime.runtime_submit`
@@ -40,10 +43,10 @@ as a trusted engine API and submit creator-derived mixes only through
 M6 still needs runtime/replay native/JS differential fixtures, a complete
 versioned `m6-1` replay/save identity and exact ruleset/content mismatch
 handling, all MIX/LEARN/HARM production-linked laws and edge-case oracles,
-independent review of the final integrated change, and hosted CI for this
-checkpoint. The recipe catalog currently carries registered effects/components
-and ordinary source cooldowns; authored timing, accuracy and animation content
-schemas are pending. Battle-local individual ledgers are returned by the
+and independent review of the final integrated change. The recipe catalog
+currently carries registered effects/components and ordinary source cooldowns;
+authored timing, accuracy and animation content schemas are pending.
+Battle-local individual ledgers are returned by the
 mixing driver; a later persistence boundary must serialize every participant's
 terminal learning state under exact content identity. The project schema stays
 `unassigned` until a playable content ruleset is published.

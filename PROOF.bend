@@ -105,6 +105,10 @@ def Laws.harmony_award_replay_idempotent():
 def Laws.harmony_award_head_replay(progress, successful_effect, completed):
   {==}
 
+def Laws.harmony_uncommitted_preserves_award_state(action, successful_effect,
+  state):
+  {==}
+
 def Laws.harmony_award_saturates():
   {==}
 
@@ -112,4 +116,15 @@ def Laws.mixed_source_pair_charge():
   {==}
 
 def Laws.mix_observation_filters_witness():
+  {==}
+
+def Laws.mixed_source_empty_rejection(now, owner):
+  {==}
+
+def Laws.training_in_battle_guard(designated_trainer, tokens, observed,
+  already_learned, source_present, recipe_present, catalog_valid):
+  {==}
+
+def Laws.training_rejection_preserves_transaction(tokens, state, recipe,
+  reason):
   {==}

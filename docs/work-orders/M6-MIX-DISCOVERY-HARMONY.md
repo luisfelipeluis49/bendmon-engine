@@ -1,10 +1,10 @@
 # M6 mix, discovery and Harmony work orders
 
-Status: implementation in progress on 2026-09-23. M6-A and M6-B pure cores and
-the M6-C production mixed battle/learning path pass locally. The native/JS
-driver, queued cancellation/fizzle and same-action KO differentials pass; M4
-program binding, queued blocked edges, broader proofs, latest hosted
-verification and formal milestone closeout remain pending. See
+Status: M6-A–D core acceptance passes locally on 2026-09-23; hosted branch
+verification and formal master closeout remain pending. The native/JS driver,
+queued cancellation/fizzle, same-action KO, blocked, zero-damage, full-heal and
+mixed replay differentials pass. Host JSON loading/program binding remains a
+later integration boundary outside M6-A's scope. See
 `docs/architecture/M6-PROGRESS.md` for exact checkpoint evidence and limits.
 
 This is the controlling M6 work package. The approved semantics are D05, D06,
@@ -306,8 +306,12 @@ ACCEPTANCE CRITERIA: all prior and M6 checks pass locally; independent Luna
 contract/code review has no unresolved finding; branch is pushed; hosted Ubuntu
 CI passes the same gate; M6 status records exact check count, commit and run URL.
 
-Reviewer and evidence links: to be filled only after implementation and hosted
-verification.
+Reviewer and evidence: independent GPT-6 Luna reviews of the runtime/replay,
+identity and no-effect paths found no unresolved production defect. The full
+local `python3 scripts/verify.py` gate passes 165 checks, including
+`./scripts/bend PROOF.bend`, native/JavaScript M6 differentials, and the
+M0–M5 regression gates. Final hosted branch run and master commit/run links
+will be recorded after hosted verification.
 
 Escalation: implementation defects are fixed within these contracts. Any change
 to the approved decisions, law meaning, RNG schedule, M4/M5 ownership or

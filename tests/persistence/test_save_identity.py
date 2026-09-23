@@ -7,7 +7,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "platform"))
 
-from persistence.battle_replay import M6_RULESET_VERSION, RULESET_VERSION  # noqa: E402
+from persistence.battle_replay import (  # noqa: E402
+    LEGACY_RULESET_VERSION, RULESET_VERSION,
+)
 from persistence.save_identity import (  # noqa: E402
     SaveIdentity,
     SaveIdentityError,
@@ -19,7 +21,7 @@ class SaveIdentityTests(unittest.TestCase):
     def identity(self, **changes: object) -> SaveIdentity:
         values: dict[str, object] = {
             "schema_version": 1,
-            "ruleset_version": RULESET_VERSION,
+            "ruleset_version": LEGACY_RULESET_VERSION,
             "content_digest": "a" * 64,
         }
         values.update(changes)
@@ -37,9 +39,13 @@ class SaveIdentityTests(unittest.TestCase):
 
     def test_exact_identity_accepts_match_and_reports_both_mismatch_values(self) -> None:
         identity = self.identity()
-        require_exact_identity(identity, expected_content_digest="a" * 64)
+        require_exact_identity(identity,
+                               expected_ruleset_version=LEGACY_RULESET_VERSION,
+                               expected_content_digest="a" * 64)
         with self.assertRaises(SaveIdentityError) as caught:
-            require_exact_identity(identity, expected_content_digest="b" * 64)
+            require_exact_identity(identity,
+                                   expected_ruleset_version=LEGACY_RULESET_VERSION,
+                                   expected_content_digest="b" * 64)
         self.assertEqual(
             str(caught.exception),
             f"project content identity mismatch: expected {'b' * 64!r}, actual {'a' * 64!r}",
@@ -47,21 +53,27 @@ class SaveIdentityTests(unittest.TestCase):
         with self.assertRaisesRegex(
             SaveIdentityError, "expected 'm6-1', actual 'm3-1'"
         ):
-            require_exact_identity(
-                identity,
-                expected_ruleset_version=M6_RULESET_VERSION,
-                expected_content_digest="a" * 64,
-            )
+            require_exact_identity(identity, expected_content_digest="a" * 64)
 
-    def test_m6_identity_requires_explicit_m6_runtime(self) -> None:
-        identity = self.identity(ruleset_version=M6_RULESET_VERSION)
+    def test_legacy_identity_requires_explicit_legacy_runtime(self) -> None:
+        identity = self.identity(ruleset_version=LEGACY_RULESET_VERSION)
         require_exact_identity(
             identity,
-            expected_ruleset_version=M6_RULESET_VERSION,
+            expected_ruleset_version=LEGACY_RULESET_VERSION,
             expected_content_digest="a" * 64,
         )
-        with self.assertRaisesRegex(SaveIdentityError, "expected 'm3-1'"):
+        with self.assertRaisesRegex(SaveIdentityError, "expected 'm6-1'"):
             require_exact_identity(identity, expected_content_digest="a" * 64)
+
+    def test_new_runtime_defaults_to_m6(self) -> None:
+        identity = self.identity(ruleset_version=RULESET_VERSION)
+        require_exact_identity(identity, expected_content_digest="a" * 64)
+        with self.assertRaisesRegex(
+            SaveIdentityError, "expected 'm3-1', actual 'm6-1'"
+        ):
+            require_exact_identity(identity,
+                                   expected_ruleset_version=LEGACY_RULESET_VERSION,
+                                   expected_content_digest="a" * 64)
 
     def test_invalid_identity_is_rejected(self) -> None:
         invalid = (

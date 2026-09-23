@@ -18,6 +18,7 @@ import ./engine/mixing/observation.bend as Learning
 import ./engine/mixing/recipe.bend as MixRecipe
 import ./engine/mixing/model.bend as MixModel
 import ./engine/mixing/runtime.bend as MixRuntime
+import ./engine/mixing/training.bend as MixTraining
 
 # BOOT-1: adding zero preserves the headless accumulator for every Nat state.
 # This is a toolchain/bootstrap law, not a battle or progression specification.
@@ -258,6 +259,15 @@ law harmony_award_head_replay:
     Harmony.AwardState{Harmony.progress_cap(progress), 0n <> completed}
     : Harmony.AwardState}
 
+# HARM-COMMIT-GATE: an uncommitted action cannot alter progress or the replay
+# ledger, regardless of its sequence, effect classification, or prior state.
+law harmony_uncommitted_preserves_award_state:
+  for action: Nat
+  for successful_effect: Bool
+  for state: Harmony.AwardState
+  {Harmony.award_once(False{}, successful_effect, action, state) == state
+    : Harmony.AwardState}
+
 # HARM-CAP: a successful new committed action at the progress ceiling records
 # its identity but cannot increase progress beyond the production cap.
 law harmony_award_saturates:
@@ -295,6 +305,46 @@ law mix_observation_filters_witness:
        [CombatMath.MoveId{7n}, CombatMath.MoveId{8n}]}]) ==
     Learning.StagedObservation{3n, MixModel.RecipeId{4n},
       [MixModel.MonsterId{11n}]} : Learning.StagedObservation}
+
+
+# MIX-REJECT-EMPTY: the production two-source transaction cannot expose a
+# partial charge when its source inventory is empty. This claim ranges over
+# every clock value and actor for a legal distinct-source request with the
+# minimum ordinary cooldown, retaining the exact input source state.
+law mixed_source_empty_rejection:
+  for now: U32
+  for owner: BattleModel.ActorId
+  {Sources.charge_mixed_pair(now, owner, CombatMath.MoveId{7n},
+      CombatMath.MoveId{8n}, 60, 60, []) == Sources.MixedSourcesRejected{[]}
+    : Sources.MixedChargeResult}
+
+
+# LEARN-GUARD: training in battle is rejected by the production guard for
+# every downstream eligibility value; no source, observation, or token
+# condition can bypass the post-battle boundary.
+law training_in_battle_guard:
+  for designated_trainer: Bool
+  for tokens: U32
+  for observed: Bool
+  for already_learned: Bool
+  for source_present: Bool
+  for recipe_present: Bool
+  for catalog_valid: Bool
+  {MixTraining.train_guard(True{}, designated_trainer, tokens, observed,
+      already_learned, source_present, recipe_present, catalog_valid) ==
+    Some{MixTraining.InBattle{}} : Maybe<MixTraining.TrainingFailure>}
+
+
+# LEARN-REJECT-ATOMIC: every rejected production training transaction returns
+# the exact state and token balance supplied to its completion boundary.
+law training_rejection_preserves_transaction:
+  for tokens: U32
+  for state: Learning.LearningState
+  for recipe: MixModel.RecipeId
+  for reason: MixTraining.TrainingFailure
+  {MixTraining.finish_train(Some{reason}, tokens, state, recipe) ==
+    MixTraining.TrainingRejected{state, tokens, reason}
+    : MixTraining.TrainingResult}
 
 
 # Approved future proof obligations (2026-09-21 decision packet):

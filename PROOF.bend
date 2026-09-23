@@ -83,3 +83,30 @@ def Laws.mix_pair_symmetry_reference():
 
 def Laws.mix_harmony_accuracy_reference():
   {==}
+
+def Laws.harmony_familiar_threshold():
+  {==}
+
+def Laws.harmony_practiced_threshold():
+  {==}
+
+def Laws.harmony_expert_threshold():
+  {==}
+
+def Laws.harmony_master_threshold():
+  {==}
+
+def Laws.harmony_progress_cap():
+  {==}
+
+def Laws.harmony_award_replay_idempotent():
+  {==}
+
+def Laws.harmony_award_saturates():
+  {==}
+
+def Laws.mixed_source_pair_charge():
+  {==}
+
+def Laws.mix_observation_filters_witness():
+  {==}

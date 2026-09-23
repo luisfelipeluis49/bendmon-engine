@@ -10,6 +10,7 @@ sys.path.insert(0, str(ROOT / "platform"))
 from persistence.battle_replay import (  # noqa: E402
     BattleReplayError,
     BattleReplayHeader,
+    M6_RULESET_VERSION,
     RNG_VERSION,
     RULESET_VERSION,
     require_exact_identity,
@@ -37,8 +38,34 @@ class BattleReplayHeaderTests(unittest.TestCase):
 
     def test_exact_content_identity_is_required(self) -> None:
         require_exact_identity(self.header(), content_digest="a" * 64)
-        with self.assertRaises(BattleReplayError):
+        with self.assertRaises(BattleReplayError) as caught:
             require_exact_identity(self.header(), content_digest="b" * 64)
+        self.assertEqual(
+            str(caught.exception),
+            f"project content identity mismatch: expected {'b' * 64!r}, actual {'a' * 64!r}",
+        )
+
+    def test_m6_replay_identity_requires_explicit_runtime_selection(self) -> None:
+        m6_header = self.header(ruleset_version=M6_RULESET_VERSION)
+        require_exact_identity(
+            m6_header,
+            content_digest="a" * 64,
+            ruleset_version=M6_RULESET_VERSION,
+        )
+        with self.assertRaisesRegex(
+            BattleReplayError, "expected 'm3-1', actual 'm6-1'"
+        ):
+            require_exact_identity(m6_header, content_digest="a" * 64)
+
+    def test_ruleset_mismatch_reports_expected_and_actual(self) -> None:
+        with self.assertRaisesRegex(
+            BattleReplayError, "expected 'm6-1', actual 'm3-1'"
+        ):
+            require_exact_identity(
+                self.header(),
+                content_digest="a" * 64,
+                ruleset_version=M6_RULESET_VERSION,
+            )
 
     def test_invalid_wait_rng_and_versions_reject(self) -> None:
         invalid = (

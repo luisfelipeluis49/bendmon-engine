@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "content-0/move.schema.json",
+  "title": "Content-0 move timing and presentation descriptor",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "id", "name", "windup", "recovery", "cooldown", "animation"],
+  "properties": {
+    "schemaVersion": {"const": "content-0"},
+    "id": {"$ref": "#/$defs/id"},
+    "name": {"type": "string", "minLength": 1, "maxLength": 128},
+    "windup": {"type": "integer", "minimum": 0, "maximum": 600},
+    "recovery": {"type": "integer", "minimum": 30, "maximum": 600},
+    "cooldown": {"type": "integer", "minimum": 60, "maximum": 3600},
+    "animation": {"$ref": "#/$defs/id"},
+    "accuracy": {"type": "integer", "minimum": 500, "maximum": 10000},
+    "alwaysHit": {"const": true}
+  },
+  "oneOf": [
+    {"required": ["accuracy"], "not": {"required": ["alwaysHit"]}},
+    {"required": ["alwaysHit"], "not": {"required": ["accuracy"]}}
+  ],
+  "$defs": {
+    "id": {"type": "string", "pattern": "^[a-z][a-z0-9_-]{0,31}:[a-z][a-z0-9_-]{0,31}$"}
+  }
+}

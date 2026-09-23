@@ -14,6 +14,7 @@ import ./engine/battle/runtime.bend as Runtime
 import ./engine/battle/effects.bend as Effects
 import ./engine/battle/multi_type.bend as Multi
 import ./engine/mixing/harmony.bend as Harmony
+import ./engine/mixing/observation.bend as Learning
 import ./engine/mixing/recipe.bend as MixRecipe
 import ./engine/mixing/model.bend as MixModel
 import ./engine/mixing/runtime.bend as MixRuntime
@@ -219,6 +220,68 @@ law mix_pair_symmetry_reference:
 law mix_harmony_accuracy_reference:
   {MixRuntime.harmony_accuracy(CombatMath.OrdinaryAccuracy{9000}, 100) ==
     CombatMath.OrdinaryAccuracy{9100} : CombatMath.AccuracyMode}
+
+
+# HARM-THRESHOLD: inclusive first mastery boundary produces Familiar.
+law harmony_familiar_threshold:
+  {Harmony.tier(5) == Harmony.Familiar{} : Harmony.HarmonyTier}
+
+law harmony_practiced_threshold:
+  {Harmony.tier(10) == Harmony.Practiced{} : Harmony.HarmonyTier}
+
+law harmony_expert_threshold:
+  {Harmony.tier(20) == Harmony.Expert{} : Harmony.HarmonyTier}
+
+law harmony_master_threshold:
+  {Harmony.tier(30) == Harmony.Master{} : Harmony.HarmonyTier}
+
+law harmony_progress_cap:
+  {Harmony.progress_cap(41) == 40 : U32}
+
+# HARM-AWARD-ONCE: replaying an already completed action preserves both
+# progress and its completion ledger.
+law harmony_award_replay_idempotent:
+  {Harmony.award_once(True{}, True{}, 9n,
+    Harmony.AwardState{5, [9n]}) == Harmony.AwardState{5, [9n]}
+    : Harmony.AwardState}
+
+# HARM-CAP: a successful new committed action at the progress ceiling records
+# its identity but cannot increase progress beyond the production cap.
+law harmony_award_saturates:
+  {Harmony.award_once(True{}, True{}, 10n,
+    Harmony.AwardState{40, []}) == Harmony.AwardState{40, [10n]}
+    : Harmony.AwardState}
+
+# MIX-CHARGE-ATOMIC: after both distinct reserved source identities validate,
+# one production call charges both with the mixed duration and clears both
+# reservations in the same returned list.
+law mixed_source_pair_charge:
+  {Sources.charge_mixed_pair(100, BattleModel.ActorId{0n},
+    CombatMath.MoveId{7n}, CombatMath.MoveId{8n}, 60, 61,
+    [Sources.MoveSource{BattleModel.ActorId{0n}, CombatMath.MoveId{7n},
+       0, True{}},
+     Sources.MoveSource{BattleModel.ActorId{0n}, CombatMath.MoveId{8n},
+       0, True{}}]) ==
+    Sources.MixedSourcesCharged{
+      [Sources.MoveSource{BattleModel.ActorId{0n}, CombatMath.MoveId{7n},
+         190, False{}},
+       Sources.MoveSource{BattleModel.ActorId{0n}, CombatMath.MoveId{8n},
+         192, False{}}]} : Sources.MixedChargeResult}
+
+# LEARN-STAGE: execution-start observation includes a witness only when that
+# combatant is active, conscious, and knows both sources; insertion is unique.
+law mix_observation_filters_witness:
+  {Learning.stage(3n,
+    MixModel.Recipe{MixModel.RecipeId{4n}, CombatMath.MoveId{7n},
+      CombatMath.MoveId{8n}, MixModel.ResultId{2n}},
+    [Learning.Witness{MixModel.MonsterId{11n}, True{}, True{},
+       [CombatMath.MoveId{7n}, CombatMath.MoveId{8n}]},
+     Learning.Witness{MixModel.MonsterId{12n}, False{}, True{},
+       [CombatMath.MoveId{7n}, CombatMath.MoveId{8n}]},
+     Learning.Witness{MixModel.MonsterId{11n}, True{}, True{},
+       [CombatMath.MoveId{7n}, CombatMath.MoveId{8n}]}]) ==
+    Learning.StagedObservation{3n, MixModel.RecipeId{4n},
+      [MixModel.MonsterId{11n}]} : Learning.StagedObservation}
 
 
 # Approved future proof obligations (2026-09-21 decision packet):

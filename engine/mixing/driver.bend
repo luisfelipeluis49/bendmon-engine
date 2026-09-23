@@ -13,6 +13,13 @@ type DrivenRunResult is Data:
   DrivenRunResult{runtime_result: Runtime.RuntimeRunResult,
     ledger: Ledger.IndividualLedger}
 
+# The host keeps one ledger for every persistent participant in the battle.
+# All ledgers see the same ordered committed event stream; ownership checks in
+# Ledger.apply_event decide which individual may gain Harmony.
+type DrivenRosterResult is Data:
+  DrivenRosterResult{runtime_result: Runtime.RuntimeRunResult,
+    ledgers: List<&2, Ledger.IndividualLedger>}
+
 def fold_events(+catalog: MixModel.Catalog,
   events: List<&2, Runtime.RuntimeEvent>,
   ledger: Ledger.IndividualLedger) -> Ledger.IndividualLedger:
@@ -99,3 +106,52 @@ def process_result(catalog: MixModel.Catalog,
 def run(+fuel: Nat, +state: Runtime.RuntimeState,
   catalog: MixModel.Catalog, ledger: Ledger.IndividualLedger) -> DrivenRunResult:
   process_result(catalog, Runtime.runtime_run(fuel, state), ledger)
+
+def process_all_events(+catalog: MixModel.Catalog,
+  +events: List<&2, Runtime.RuntimeEvent>,
+  ledgers: List<&2, Ledger.IndividualLedger>) ->
+  List<&2, Ledger.IndividualLedger>:
+  match ledgers:
+    case Nil{}: Nil{}
+    case ledger <> rest:
+      fold_events(catalog, events, ledger) <>
+        process_all_events(catalog, events, rest)
+
+def commit_all(+status: Battle.BattleStatus,
+  ledgers: List<&2, Ledger.IndividualLedger>) ->
+  List<&2, Ledger.IndividualLedger>:
+  match ledgers:
+    case Nil{}: Nil{}
+    case ledger <> rest:
+      commit_battle_status(status, ledger) <> commit_all(status, rest)
+
+def process_roster_result(catalog: MixModel.Catalog,
+  result: Runtime.RuntimeRunResult,
+  ledgers: List<&2, Ledger.IndividualLedger>) -> DrivenRosterResult:
+  match result:
+    case Runtime.RuntimeRunBoundary{state, emitted, +combat_events}:
+      DrivenRosterResult{
+        Runtime.RuntimeRunBoundary{state, emitted, combat_events},
+        process_all_events(catalog, combat_events, ledgers)}
+    case Runtime.RuntimeRunYielded{state, emitted, +combat_events}:
+      DrivenRosterResult{
+        Runtime.RuntimeRunYielded{state, emitted, combat_events},
+        process_all_events(catalog, combat_events, ledgers)}
+    case Runtime.RuntimeRunStalled{state, emitted, +combat_events}:
+      DrivenRosterResult{
+        Runtime.RuntimeRunStalled{state, emitted, combat_events},
+        process_all_events(catalog, combat_events, ledgers)}
+    case Runtime.RuntimeRunTerminal{+state, emitted, +combat_events}:
+      DrivenRosterResult{
+        Runtime.RuntimeRunTerminal{state, emitted, combat_events},
+        commit_all(Runtime.runtime_status(state),
+          process_all_events(catalog, combat_events, ledgers))}
+    case Runtime.RuntimeRunRejected{state, diagnostics}:
+      DrivenRosterResult{Runtime.RuntimeRunRejected{state, diagnostics}, ledgers}
+    case Runtime.RuntimeRunFault{state, reason}:
+      DrivenRosterResult{Runtime.RuntimeRunFault{state, reason}, ledgers}
+
+def run_roster(+fuel: Nat, +state: Runtime.RuntimeState,
+  catalog: MixModel.Catalog,
+  ledgers: List<&2, Ledger.IndividualLedger>) -> DrivenRosterResult:
+  process_roster_result(catalog, Runtime.runtime_run(fuel, state), ledgers)

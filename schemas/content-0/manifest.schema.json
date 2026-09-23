@@ -10,6 +10,7 @@
     "catalogs": {"type": "array", "maxItems": 64, "uniqueItems": true, "items": {"$ref": "#/$defs/jsonPath"}},
     "maps": {"type": "array", "maxItems": 64, "uniqueItems": true, "items": {"$ref": "#/$defs/jsonPath"}},
     "encounters": {"type": "array", "maxItems": 64, "uniqueItems": true, "items": {"$ref": "#/$defs/jsonPath"}},
+    "moves": {"type": "array", "maxItems": 256, "uniqueItems": true, "items": {"$ref": "#/$defs/jsonPath"}},
     "assets": {"type": "array", "maxItems": 256, "items": {"$ref": "#/$defs/asset"}}
   },
   "$defs": {

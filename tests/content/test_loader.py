@@ -25,7 +25,7 @@ def make_project(root: Path) -> Path:
     (root / "assets").mkdir(parents=True)
     (root / "assets/pixel.ppm").write_bytes(ppm)
     write_json(root / "project.json", {"schemaVersion": "content-0", "id": "demo:project", "name": "Demo", "ruleset": "unassigned", "entryMap": "demo:start"})
-    write_json(root / "manifest.json", {"schemaVersion": "content-0", "catalogs": ["data/catalog.json"], "maps": ["data/map.json"], "encounters": ["data/encounter.json"], "assets": [{"id": "demo:pixel", "path": "assets/pixel.ppm", "mediaType": "image/x-portable-pixmap", "bytes": len(ppm), "sha256": hashlib.sha256(ppm).hexdigest()}]})
+    write_json(root / "manifest.json", {"schemaVersion": "content-0", "catalogs": ["data/catalog.json"], "maps": ["data/map.json"], "encounters": ["data/encounter.json"], "moves": [], "assets": [{"id": "demo:pixel", "path": "assets/pixel.ppm", "mediaType": "image/x-portable-pixmap", "bytes": len(ppm), "sha256": hashlib.sha256(ppm).hexdigest()}]})
     write_json(root / "data/catalog.json", {"schemaVersion": "content-0", "id": "demo:catalog", "species": [{"id": "demo:fox", "name": "Fox", "sprite": "demo:pixel"}]})
     write_json(root / "data/encounter.json", {"schemaVersion": "content-0", "id": "demo:field", "entries": [{"species": "demo:fox", "level": 1}]})
     write_json(root / "data/map.json", {"schemaVersion": "content-0", "id": "demo:start", "name": "Start", "width": 8, "height": 8, "encounters": ["demo:field"]})
@@ -55,6 +55,53 @@ class LoaderTests(unittest.TestCase):
         self.assertEqual(hashlib.sha256(loaded.canonical_json).hexdigest(), loaded.content_hash)
         with self.assertRaisesRegex(Exception, "cannot assign"):
             loaded.project.name = "changed"  # type: ignore[misc]
+
+    def test_authored_move_timing_accuracy_and_animation_reference(self) -> None:
+        move = {"schemaVersion": "content-0", "id": "demo:quick", "name": "Quick",
+                "accuracy": 500, "windup": 0, "recovery": 30, "cooldown": 60,
+                "animation": "demo:pixel"}
+        write_json(self.root / "data/move.json", move)
+        manifest = json.loads((self.root / "manifest.json").read_text())
+        manifest["moves"] = ["data/move.json"]
+        write_json(self.root / "manifest.json", manifest)
+        loaded = load_project(self.root, self.kernel)
+        self.assertEqual(loaded.moves[0].accuracy, 500)
+        self.assertEqual((loaded.moves[0].windup, loaded.moves[0].recovery,
+                          loaded.moves[0].cooldown), (0, 30, 60))
+
+    def test_move_ranges_always_hit_and_animation_reference_are_checked(self) -> None:
+        move = {"schemaVersion": "content-0", "id": "demo:quick", "name": "Quick",
+                "alwaysHit": True, "windup": 601, "recovery": 30, "cooldown": 60,
+                "animation": "demo:missing"}
+        write_json(self.root / "data/move.json", move)
+        manifest = json.loads((self.root / "manifest.json").read_text())
+        manifest["moves"] = ["data/move.json"]
+        write_json(self.root / "manifest.json", manifest)
+        with self.assertRaises(ContentError) as caught:
+            load_project(self.root, self.kernel)
+        self.assertEqual(caught.exception.diagnostics[0].pointer, "/windup")
+        move["windup"] = 0
+        write_json(self.root / "data/move.json", move)
+        with self.assertRaises(ContentError) as caught:
+            load_project(self.root, self.kernel)
+        self.assertEqual(caught.exception.diagnostics[0].pointer, "/animation")
+
+    def test_move_shape_and_accuracy_mode_reject_as_content_errors(self) -> None:
+        manifest = json.loads((self.root / "manifest.json").read_text())
+        manifest["moves"] = ["data/move.json"]
+        write_json(self.root / "manifest.json", manifest)
+        write_json(self.root / "data/move.json", 7)
+        with self.assertRaises(ContentError) as caught:
+            load_project(self.root, self.kernel)
+        self.assertEqual(caught.exception.diagnostics[0].code, "shape")
+        write_json(self.root / "data/move.json", {
+            "schemaVersion": "content-0", "id": "demo:quick", "name": "Quick",
+            "windup": 0, "recovery": 30, "cooldown": 60,
+            "animation": "demo:pixel",
+        })
+        with self.assertRaises(ContentError) as caught:
+            load_project(self.root, self.kernel)
+        self.assertEqual(caught.exception.diagnostics[0].code, "accuracy-mode")
 
     def test_canonical_identity_ignores_json_keys_and_manifest_order(self) -> None:
         first = load_project(self.root, self.kernel).content_hash

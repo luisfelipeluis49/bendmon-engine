@@ -15,6 +15,14 @@ from .replay_checkpoints import (
     replay_checkpoints,
     validate_checkpoint_counts,
 )
+from .save_identity import SaveIdentity, SaveIdentityError
+from .learning_state import (
+    IndividualLearning,
+    LearningStateCodecError,
+    RecipeHarmony,
+    decode_learning_state,
+    encode_learning_state,
+)
 
 __all__ = [
     "CanonicalJSONError",
@@ -28,4 +36,11 @@ __all__ = [
     "checkpoint_digest",
     "replay_checkpoints",
     "validate_checkpoint_counts",
+    "SaveIdentity",
+    "SaveIdentityError",
+    "IndividualLearning",
+    "LearningStateCodecError",
+    "RecipeHarmony",
+    "encode_learning_state",
+    "decode_learning_state",
 ]

@@ -16,6 +16,7 @@ import ./engine/battle/multi_type.bend as Multi
 import ./engine/mixing/harmony.bend as Harmony
 import ./engine/mixing/recipe.bend as MixRecipe
 import ./engine/mixing/model.bend as MixModel
+import ./engine/mixing/runtime.bend as MixRuntime
 
 # BOOT-1: adding zero preserves the headless accumulator for every Nat state.
 # This is a toolchain/bootstrap law, not a battle or progression specification.
@@ -211,6 +212,13 @@ law mix_pair_symmetry_reference:
       CombatMath.MoveId{8n}) ==
     MixRecipe.canonical_pair(CombatMath.MoveId{8n},
       CombatMath.MoveId{7n}) : MixModel.SourcePair}
+
+
+# HARM-2: the accepted mixed-action snapshot adds a Familiar accuracy package
+# to an ordinary base before the M4 stage/evasion calculation.
+law mix_harmony_accuracy_reference:
+  {MixRuntime.harmony_accuracy(CombatMath.OrdinaryAccuracy{9000}, 100) ==
+    CombatMath.OrdinaryAccuracy{9100} : CombatMath.AccuracyMode}
 
 
 # Approved future proof obligations (2026-09-21 decision packet):

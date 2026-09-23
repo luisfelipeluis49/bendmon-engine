@@ -110,6 +110,7 @@ def event_changes_gameplay(status_state_changed: Bool,
     # program effect (the originating DamageApplied event does).
     case _ Effects.DerivedDamage{target, from_node, amount}: False{}
     case _ Effects.DamageMissed{node, target, draw}: False{}
+    case _ Effects.DamageComponentsApplied{node, components}: False{}
     case _ Effects.DamageNoEffect{node, target, reason}: False{}
     case _ Effects.NoEffect{target, reason}: False{}
     case _ Effects.ActionMissed{draw}: False{}

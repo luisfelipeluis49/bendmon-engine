@@ -1,0 +1,9 @@
+{
+  "fixture_version": "m6-core-1",
+  "fixtures": [
+    "cooldown.json",
+    "harmony.json",
+    "identity.json",
+    "learning.json"
+  ]
+}

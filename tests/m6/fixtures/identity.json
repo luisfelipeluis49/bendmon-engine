@@ -1,0 +1,13 @@
+{
+  "fixture_version": "m6-core-1",
+  "id": "identity-reversed-pair",
+  "description": "Unordered recipe identity sorts distinct move IDs regardless of submitted order.",
+  "kind": "identity",
+  "input": {
+    "left": 41,
+    "right": 7
+  },
+  "expected": {
+    "canonical": [7, 41]
+  }
+}

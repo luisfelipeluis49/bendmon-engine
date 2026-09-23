@@ -2,6 +2,7 @@ import Base
 import ./combat_math.bend as Math
 import ./combat_resolver.bend as Combat
 import ./rng.bend as Rng
+import ./multi_type.bend as Multi
 
 # M4 closed effect algebra. Conditional branches contain leaf sequences; nested
 # conditionals are deliberately absent from this ruleset version.
@@ -98,6 +99,7 @@ type NoEffectReason is Data:
 type EffectEvent is Data:
   DamageApplied{node: Nat, target: EffectTarget, category: DamageCategory,
     amount: U32, critical: Bool}
+  DamageComponentsApplied{node: Nat, components: List<&2, Multi.ComponentDamage>}
   DamageMissed{node: Nat, target: EffectTarget, draw: U32}
   DamageNoEffect{node: Nat, target: EffectTarget, reason: NoEffectReason}
   HpRestored{target: EffectTarget, amount: U32}
@@ -127,6 +129,7 @@ type EffectDiagnostic is Data:
   InvalidStageDelta{magnitude: U32}
   BranchDamageUnsupported{node: Nat}
   InvalidActorState{}
+  TypedDamageInvalid{reason: Multi.ResolutionDiagnostic}
 
 type EffectResult is Data:
   EffectsCommitted{world: EffectWorld, rng: Rng.RngState,
@@ -181,6 +184,31 @@ def actor_statuses(actor: EffectActor) -> List<&2, StatusInstance>:
   EffectActor{hp, max_hp, physical_defense, special_defense, stages, statuses,
     protected, immunities} = actor
   statuses
+
+def status_instance_eq(left: StatusInstance, right: StatusInstance) -> Bool:
+  match left right:
+    case StatusInstance{left_id, left_duration, left_magnitude}
+         StatusInstance{right_id, right_duration, right_magnitude}:
+      Bool.and(status_eq(left_id, right_id), Bool.and(
+        U32.is_eq(left_duration, right_duration),
+        U32.is_eq(left_magnitude, right_magnitude)))
+
+def status_lists_eq(left: List<&2, StatusInstance>,
+  right: List<&2, StatusInstance>) -> Bool:
+  match left right:
+    case Nil{} Nil{}: True{}
+    case first <> left_rest second <> right_rest:
+      Bool.and(status_instance_eq(first, second),
+        status_lists_eq(left_rest, right_rest))
+    case _ _: False{}
+
+def world_status_changed(before: EffectWorld, after: EffectWorld) -> Bool:
+  match before after:
+    case EffectWorld{before_source, before_target}
+         EffectWorld{after_source, after_target}:
+      Bool.not(Bool.and(status_lists_eq(actor_statuses(before_source),
+        actor_statuses(after_source)), status_lists_eq(
+        actor_statuses(before_target), actor_statuses(after_target))))
 
 def actor_protected(actor: EffectActor) -> Bool:
   EffectActor{hp, max_hp, physical_defense, special_defense, stages, statuses,
@@ -323,6 +351,31 @@ def status_magnitude(status: StatusId, +maximum: U32) -> U32:
     case Sleep{}: 0
     case Stun{}: 0
     case Blind{}: 2
+
+# Classify the intended program application from the pre-action state. The
+# final world also includes opportunity aftermath, whose duration tick alone
+# must never qualify a mix for Harmony.
+def status_install_changes(+wanted: StatusId, +maximum: U32,
+  values: List<&2, StatusInstance>) -> Bool:
+  match values:
+    case Nil{}: True{}
+    case StatusInstance{+status, duration, magnitude} <> rest:
+      Bool.or(Bool.and(status_eq(wanted, status),
+        Bool.or(Bool.not(U32.is_eq(duration, status_duration(wanted))),
+          U32.is_lt(magnitude, status_magnitude(wanted, maximum)))),
+        Bool.and(Bool.not(status_eq(wanted, status)),
+          status_install_changes(wanted, maximum, rest)))
+
+def status_event_changes(+before: EffectWorld,
+  events: List<&2, EffectEvent>) -> Bool:
+  match events:
+    case Nil{}: False{}
+    case StatusApplied{target, status, refreshed} <> rest:
+      +actor = {target_actor(target, before) : EffectActor}
+      Bool.or(status_install_changes(status, actor_max_hp(actor),
+        actor_statuses(actor)), status_event_changes(before, rest))
+    case event <> rest:
+      status_event_changes(before, rest)
 
 def conflicts(left: StatusId, right: StatusId) -> Bool:
   match left right:
@@ -1185,3 +1238,174 @@ def attempt(+program: EffectProgram, +world: EffectWorld,
   apply_aftermath: Bool) -> EffectResult:
   attempt_validated(validate(program, world, snapshot), program, world,
     snapshot, rng, apply_aftermath)
+
+# M6 typed damage enters the same action-level accuracy and critical boundary
+# as ordinary M4 damage. M5 has already resolved every authored component
+# against the execution-time actor/type snapshots; this adapter consumes that
+# aggregate once and keeps component identity beside the normal semantic hit.
+def typed_damage_resolution_select(zero: Bool, +rng: Rng.RngState,
+  mode: Math.AccuracyMode, accuracy: Math.Stage, evasion: Math.Stage,
+  +amount: U32, immune_only: Bool, +critical_bonus: U32) -> Combat.CombatResolution:
+  match zero immune_only:
+    case True{} True{}: Combat.resolve_noncritical(rng,
+      Combat.DeterministicImmune{}, mode, accuracy, evasion)
+    case True{} False{}: Combat.resolve_noncritical(rng, Combat.NonDamaging{},
+      mode, accuracy, evasion)
+    case False{} _: Combat.resolve_accuracy(Math.accuracy(mode, accuracy, evasion),
+      rng, amount, U32.mul(amount, 2), critical_bonus)
+
+def typed_components_all_immune(
+  components: List<&2, Multi.ComponentDamage>
+) -> Bool:
+  match components:
+    case Nil{}: True{}
+    case Multi.ComponentDamage{type_id, power, amount, immune, stab} <> rest:
+      Bool.and(immune, typed_components_all_immune(rest))
+
+def typed_damage_resolution(resolution: Combat.CombatResolution,
+  +node: Nat, +target: EffectTarget, +category: DamageCategory,
+  components: List<&2, Multi.ComponentDamage>, +world: EffectWorld,
+  events: List<&2, EffectEvent>, records: List<&2, DamageRecord>) -> Execution:
+  match resolution:
+    case Combat.CombatInvalid{rng}: ExecutionFault{Rng.RngInvalidBound{rng}}
+    case Combat.CombatRngFault{rng, reason}: ExecutionFault{reason}
+    case Combat.CombatResolved{rng, Combat.CombatMiss{draw, candidates}}:
+      ExecutionStopped{world, rng, List.append(&2, EffectEvent, events,
+        [DamageMissed{node, target, draw}]), DamageRecord{node, 0} <> records}
+    case Combat.CombatResolved{rng, Combat.CombatImmune{accuracy_candidates}}:
+      Execution{world, rng, List.append(&2, EffectEvent, events,
+        [DamageNoEffect{node, target, Immune{}}]),
+        DamageRecord{node, 0} <> records}
+    case Combat.CombatResolved{rng, Combat.CombatEffect{accuracy_candidates}}:
+      Execution{world, rng, List.append(&2, EffectEvent, events,
+        [DamageNoEffect{node, target, ZeroDamage{}}]),
+        DamageRecord{node, 0} <> records}
+    case Combat.CombatResolved{rng, Combat.CombatNoDamage{critical, draw,
+        accuracy_candidates, critical_candidates}}:
+      Execution{world, rng, List.append(&2, EffectEvent, events,
+        [DamageNoEffect{node, target, ZeroDamage{}}]),
+        DamageRecord{node, 0} <> records}
+    case Combat.CombatResolved{rng, Combat.CombatHit{amount, critical, draw,
+        accuracy_candidates, critical_candidates}}:
+      +actor = target_actor(target, world)
+      +actual = U32.min(actor_hp(actor), amount)
+      +next_world = replace_actor(target, damage_actor(actual, actor), world)
+      +with_damage = List.append(&2, EffectEvent, events,
+        [damage_event(U32.is_zero(actual), node, target, category, actual,
+          critical)])
+      Execution{next_world, rng, List.append(&2, EffectEvent, with_damage,
+        [DamageComponentsApplied{node, components}]),
+        DamageRecord{node, actual} <> records}
+
+def typed_damage_outcome(+node: Nat, +target: EffectTarget,
+  +category: DamageCategory, +components: List<&2, Multi.ComponentDamage>,
+  +normal: U32, +snapshot: ActionSnapshot, +execution: Execution) -> Execution:
+  match snapshot execution:
+    case ActionSnapshot{level, physical_attack, special_attack, accuracy, mode,
+        physical_damage, critical_bonus} ExecutionFault{reason}:
+      ExecutionFault{reason}
+    case ActionSnapshot{level, physical_attack, special_attack, accuracy, mode,
+        physical_damage, critical_bonus}
+        ExecutionStopped{world, rng, events, records}:
+      ExecutionStopped{world, rng, events, records}
+    case ActionSnapshot{level, physical_attack, special_attack, accuracy, mode,
+        +physical_damage, critical_bonus} Execution{+world, rng, events, records}:
+      +defender = target_actor(target, world)
+      +adjusted = U32.div(U32.mul(normal,
+        category_modifier_numerator(category, physical_damage)),
+        category_modifier_denominator(category, physical_damage))
+      +resolution = typed_damage_resolution_select(U32.is_zero(adjusted), rng,
+        mode, accuracy, actor_stage(Evasion{}, defender), adjusted,
+        typed_components_all_immune(components), critical_bonus)
+      typed_damage_resolution(resolution, node, target, category, components,
+        world, events, records)
+
+def typed_execute_effects(effects: List<&2, Effect>, +snapshot: ActionSnapshot,
+  +node: Nat, +target: EffectTarget, +category: DamageCategory,
+  +components: List<&2, Multi.ComponentDamage>, +normal: U32,
+  execution: Execution) -> Execution:
+  match effects:
+    case Nil{}: execution
+    case Leaf{Damage{damage_node, damage_target, damage_category, power}} <> rest:
+      typed_execute_effects(rest, snapshot, node, target, category, components,
+        normal, typed_damage_outcome(node, target, category, components, normal,
+          snapshot, execution))
+    case effect <> rest:
+      typed_execute_effects(rest, snapshot, node, target, category, components,
+        normal, execute_effect(effect, snapshot, execution))
+
+# Additive M5 entry point. Existing callers continue through `attempt`; typed
+# callers pass one complete M5 aggregate and retain exactly M4's blocked,
+# accuracy, action completion and aftermath boundaries.
+def typed_commit_damage(effects: List<&2, Effect>,
+  +components: List<&2, Multi.ComponentDamage>, +total: U32,
+  +world: EffectWorld, +snapshot: ActionSnapshot, +rng: Rng.RngState,
+  apply_aftermath: Bool) -> EffectResult:
+  match effects:
+    case Leaf{Damage{+node, +target, +category, power}} <> rest:
+      finish_attempt(apply_aftermath, finish_execution(world, rng,
+        typed_execute_effects(effects, snapshot, node, target, category,
+          components, total, Execution{world, rng, Nil{}, Nil{}})))
+    case _:
+      EffectsRejected{world, rng, [DamageMustBeFirst{0n}]}
+
+def typed_commit_attempt(+effects: List<&2, Effect>, damage_count: Nat,
+  +components: List<&2, Multi.ComponentDamage>, +total: U32,
+  +world: EffectWorld, +snapshot: ActionSnapshot, +rng: Rng.RngState,
+  apply_aftermath: Bool) -> EffectResult:
+  match damage_count:
+    case 0n: finish_attempt(apply_aftermath, run_valid_program(False{},
+      effects, world, snapshot, rng))
+    case 1n: typed_commit_damage(effects, components, total, world, snapshot,
+      rng, apply_aftermath)
+    case _:
+      EffectsRejected{world, rng, [MultipleDamageNodes{}]}
+
+def typed_world_blocked(world: EffectWorld) -> Bool:
+  match world:
+    case EffectWorld{source, target}:
+      blocks_action(actor_statuses(source))
+
+def attempt_typed_blocked(blocked: Bool, effects: List<&2, Effect>,
+  damage_count: Nat, +components: List<&2, Multi.ComponentDamage>, +total: U32,
+  +world: EffectWorld, +snapshot: ActionSnapshot, +rng: Rng.RngState,
+  apply_aftermath: Bool) -> EffectResult:
+  match blocked:
+    case True{}:
+      match world:
+        case EffectWorld{source, target}:
+          blocked_attempt(complete_opportunity(source), target, rng)
+    case False{}:
+      typed_commit_attempt(effects, damage_count, components, total,
+        world, snapshot, rng, apply_aftermath)
+
+def attempt_typed_result(multi_result: Multi.MultiDamageResult,
+  +program: EffectProgram, damage_count: Nat, +world: EffectWorld,
+  +snapshot: ActionSnapshot, +rng: Rng.RngState,
+  apply_aftermath: Bool) -> EffectResult:
+  match multi_result:
+    case Multi.MultiDamageRejected{reason}:
+      EffectsRejected{world, rng, [TypedDamageInvalid{reason}]}
+    case Multi.MultiDamageResolved{components, total}:
+      match program:
+        case EffectProgram{effects}:
+          attempt_typed_blocked(typed_world_blocked(world), effects,
+            damage_count, components, total, world, snapshot, rng,
+            apply_aftermath)
+
+def attempt_typed_validated(validation: Validation, +program: EffectProgram,
+  +world: EffectWorld, +snapshot: ActionSnapshot, +rng: Rng.RngState,
+  apply_aftermath: Bool, +multi_result: Multi.MultiDamageResult) -> EffectResult:
+  match validation:
+    case Validation{diagnostic <> rest, seen, damage_count, cost}:
+      EffectsRejected{world, rng,
+        List.reverse(&2, EffectDiagnostic, diagnostic <> rest)}
+    case Validation{Nil{}, seen, damage_count, cost}:
+      attempt_typed_result(multi_result, program, damage_count, world, snapshot,
+        rng, apply_aftermath)
+
+def attempt_typed(+program: EffectProgram, +world: EffectWorld,
+  +snapshot: ActionSnapshot, +rng: Rng.RngState,
+  apply_aftermath: Bool, +multi_result: Multi.MultiDamageResult) -> EffectResult:
+  attempt_typed_validated(validate(program, world, snapshot), program, world,
+    snapshot, rng, apply_aftermath, multi_result)

@@ -103,6 +103,100 @@ class LoaderTests(unittest.TestCase):
             load_project(self.root, self.kernel)
         self.assertEqual(caught.exception.diagnostics[0].code, "accuracy-mode")
 
+    def test_authored_mix_recipe_validates_unordered_base_pair_and_result(self) -> None:
+        base = {"schemaVersion": "content-0", "name": "Base", "accuracy": 9000,
+                "windup": 0, "recovery": 30, "cooldown": 60,
+                "animation": "demo:pixel", "components": [2]}
+        result = {"schemaVersion": "content-0", "id": "demo:result", "name": "Result",
+                  "components": [1, 4], "power": 200, "accuracy": 8500,
+                  "windup": 30, "recovery": 60, "cooldown": 90,
+                  "animation": "demo:pixel"}
+        recipe = {"schemaVersion": "content-0", "id": "demo:recipe",
+                  "sourceA": "demo:a", "sourceB": "demo:b", "result": "demo:result"}
+        for file, value in [("a.json", dict(base, id="demo:a")),
+                            ("b.json", dict(base, id="demo:b")),
+                            ("result.json", result), ("recipe.json", recipe)]:
+            write_json(self.root / "data" / file, value)
+        manifest = json.loads((self.root / "manifest.json").read_text())
+        manifest.update(moves=["data/a.json", "data/b.json"],
+                        mixRecipes=["data/recipe.json"], mixResults=["data/result.json"])
+        write_json(self.root / "manifest.json", manifest)
+        loaded = load_project(self.root, self.kernel)
+        self.assertEqual(loaded.mix_recipes[0].source_a, "demo:a")
+        self.assertEqual(loaded.mix_results[0].components, (1, 4))
+        self.assertEqual(json.loads(loaded.canonical_json)["mixResults"][0]["power"], 200)
+
+    def test_mix_pair_is_unordered_and_sources_need_single_component(self) -> None:
+        base = {"schemaVersion": "content-0", "name": "Base", "accuracy": 9000,
+                "windup": 0, "recovery": 30, "cooldown": 60,
+                "animation": "demo:pixel", "components": [2]}
+        result = {"schemaVersion": "content-0", "id": "demo:result", "name": "Result",
+                  "components": [1], "power": 1, "alwaysHit": True,
+                  "windup": 0, "recovery": 30, "cooldown": 60,
+                  "animation": "demo:pixel"}
+        recipe = {"schemaVersion": "content-0", "id": "demo:recipe",
+                  "sourceA": "demo:a", "sourceB": "demo:b", "result": "demo:result"}
+        for file, value in [("a.json", dict(base, id="demo:a")),
+                            ("b.json", dict(base, id="demo:b")),
+                            ("result.json", result), ("recipe.json", recipe)]:
+            write_json(self.root / "data" / file, value)
+        reversed_recipe = dict(recipe, id="demo:reversed", sourceA="demo:b", sourceB="demo:a")
+        write_json(self.root / "data/reversed.json", reversed_recipe)
+        manifest = json.loads((self.root / "manifest.json").read_text())
+        manifest.update(moves=["data/a.json", "data/b.json"],
+                        mixRecipes=["data/recipe.json", "data/reversed.json"], mixResults=["data/result.json"])
+        write_json(self.root / "manifest.json", manifest)
+        with self.assertRaises(ContentError) as caught:
+            load_project(self.root, self.kernel)
+        self.assertEqual(caught.exception.diagnostics[0].code, "duplicate")
+        manifest["mixRecipes"] = ["data/recipe.json"]
+        write_json(self.root / "manifest.json", manifest)
+        write_json(self.root / "data/b.json", dict(base, id="demo:b", components=[2, 3]))
+        with self.assertRaises(ContentError) as caught:
+            load_project(self.root, self.kernel)
+        self.assertEqual(caught.exception.diagnostics[0].code, "mix-source-components")
+
+    def test_mix_recipe_hash_canonicalizes_reversed_source_order(self) -> None:
+        base = {"schemaVersion": "content-0", "name": "Base", "accuracy": 9000,
+                "windup": 0, "recovery": 30, "cooldown": 60,
+                "animation": "demo:pixel", "components": [2]}
+        result = {"schemaVersion": "content-0", "id": "demo:result", "name": "Result",
+                  "components": [1], "power": 20, "alwaysHit": True,
+                  "windup": 0, "recovery": 30, "cooldown": 60,
+                  "animation": "demo:pixel"}
+        recipe = {"schemaVersion": "content-0", "id": "demo:recipe",
+                  "sourceA": "demo:a", "sourceB": "demo:b", "result": "demo:result"}
+        for file, value in [("a.json", dict(base, id="demo:a")),
+                            ("b.json", dict(base, id="demo:b")),
+                            ("result.json", result), ("recipe.json", recipe)]:
+            write_json(self.root / "data" / file, value)
+        manifest = json.loads((self.root / "manifest.json").read_text())
+        manifest.update(moves=["data/a.json", "data/b.json"],
+                        mixRecipes=["data/recipe.json"], mixResults=["data/result.json"])
+        write_json(self.root / "manifest.json", manifest)
+        before = load_project(self.root, self.kernel).content_hash
+        write_json(self.root / "data/recipe.json", dict(recipe, sourceA="demo:b", sourceB="demo:a"))
+        self.assertEqual(before, load_project(self.root, self.kernel).content_hash)
+
+    def test_mix_result_rejects_effects_and_power_over_200(self) -> None:
+        result = {"schemaVersion": "content-0", "id": "demo:result", "name": "Result",
+                  "components": [1], "power": 201, "alwaysHit": True,
+                  "windup": 0, "recovery": 30, "cooldown": 60,
+                  "animation": "demo:pixel"}
+        write_json(self.root / "data/result.json", result)
+        manifest = json.loads((self.root / "manifest.json").read_text())
+        manifest["mixResults"] = ["data/result.json"]
+        write_json(self.root / "manifest.json", manifest)
+        with self.assertRaises(ContentError) as caught:
+            load_project(self.root, self.kernel)
+        self.assertEqual(caught.exception.diagnostics[0].code, "integer")
+        result["power"] = 200
+        result["effects"] = []
+        write_json(self.root / "data/result.json", result)
+        with self.assertRaises(ContentError) as caught:
+            load_project(self.root, self.kernel)
+        self.assertEqual(caught.exception.diagnostics[0].code, "unknown-field")
+
     def test_canonical_identity_ignores_json_keys_and_manifest_order(self) -> None:
         first = load_project(self.root, self.kernel).content_hash
         manifest = json.loads((self.root / "manifest.json").read_text())

@@ -45,35 +45,50 @@ Bend does not hide the constructor, so the host must treat `Runtime.runtime_subm
 as a trusted engine API and submit creator-derived mixes only through
 `mixing.runtime.submit_mix`. The latter is the validated content boundary.
 
-The next integration slice now folds each committed event across every
+The next integration slice folds each committed event across every
 participant's battle-local ledger and merges all of them at terminal battle
 results. A canonical host codec records every roster individual's observations
 and per-recipe Harmony progress under exact save schema, ruleset and content
 identity. It rejects missing or duplicate individuals, malformed progress,
-and learned recipes without an observation. The codec is a boundary component;
-no full save installation path exists yet, and catalog membership must be
-checked when that path is built. Replay/save mismatch diagnostics name both
+learned recipes without an observation, and IDs absent from the selected recipe
+catalog. The codec is a boundary component; no full save installation path
+exists yet. Replay/save mismatch diagnostics name both
 expected and actual identities. `m3-1` remains the active default; `m6-1` is
 explicitly selectable for M6 records until milestone closeout. An additive
 Content-0 move document validates authored timing, accuracy or always-hit,
-and animation asset references. The original demo remains unassigned and
-existing content can omit moves.
+animation asset references and an optional source component. Additive recipe
+and result documents validate distinct unordered source pairs, separate result
+IDs, one component per source, 1–4 result components, power, accuracy, timing,
+and animation references. Reversing a source pair preserves canonical content
+identity. These documents are host metadata and do not yet bind a result to a
+registered M4 effect program. The original demo remains unassigned and
+existing content can omit these optional catalogs.
 
-The integrated checkpoint passes 160 local checks with
-`python3 scripts/verify.py`, including the new full queued mixed-action golden
-and native/JavaScript differential. Hosted verification for this checkpoint is
-pending.
+The previous integrated checkpoint passed 160 local checks with
+`python3 scripts/verify.py`, including the full queued mixed-action golden and
+native/JavaScript differential. Hosted Ubuntu CI passed after increasing the
+cross-target battle compile timeout for the slower hosted runner in
+[run 35841702805](https://github.com/luisfelipeluis49/bendmon-engine/actions/runs/35841702805).
+The current checkpoint adds an effect-edge golden in both targets. A same-action
+mixed KO revealed that effect HP synchronization updated every actor instead
+of only the selected actor; the production battle runtime now matches actor IDs
+before updating HP, so the KO produces Victory and leaves the player conscious.
+The golden also covers a blocked direct effect and no Harmony award for a
+false-success completion. A quantified production-linked Harmony replay law
+covers progress, outcome and the rest of a completion ledger with a fixed
+action ID. The independent Luna review found no concrete defect in this slice.
+`python3 scripts/verify.py` passes 161 local checks for this checkpoint;
+hosted verification is pending.
 
 The native/JavaScript differential now covers the production M6 driver plus
 full queued mixed cancellation/fizzle transitions, and an independent Luna
 integration review found and resolved a premature ruleset-default switch.
 Additional checked production-call laws cover concrete Harmony thresholds,
 replay idempotence, mixed source charging and witness filtering. M6 still needs
-same-action KO and all-blocked edge oracles, broader quantified MIX/LEARN/HARM
-laws, authored mix
-result schema coverage beyond the added base move timing/accuracy/animation
-fields, final runtime/replay integration review, and a hosted gate for the
-latest checkpoint. The project schema stays `unassigned` until a playable
+queued all-blocked/immune edge coverage, broader quantified MIX/LEARN/HARM laws,
+binding authored results to registered M4 effect programs, full save
+installation, final runtime/replay integration review, and a hosted gate for
+the current checkpoint. The project schema stays `unassigned` until a playable
 content ruleset is published.
 
 The existing `m3-1` replay identity remains active for prior fixtures. The

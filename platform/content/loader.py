@@ -14,7 +14,8 @@ from typing import Any, Callable, Iterable
 
 from .models import (Asset, AssetId, Catalog, CatalogId, Encounter,
                      EncounterEntry, EncounterId, LoadedProject, MapId,
-                     MapRecord, MoveId, MoveRecord, Project, ProjectId,
+                     MapRecord, MixRecipe, MixResultDescriptor, MoveId,
+                     MoveRecord, Project, ProjectId, RecipeId, ResultId, TypeId,
                      Species, SpeciesId)
 
 SCHEMA = "content-0"
@@ -328,16 +329,18 @@ def load_project(path: os.PathLike[str] | str, kernel_path: os.PathLike[str] | s
             _fail("ruleset", "project.json", "/ruleset", 'ruleset must be "unassigned"')
         project = Project(ProjectId(_id(p["id"], "project.json", "/id")), _string(p["name"], "project.json", "/name"),
                           "unassigned", MapId(_id(p["entryMap"], "project.json", "/entryMap")))
-        m = _object(_doc(root, "manifest.json"), {"schemaVersion", "catalogs", "maps", "encounters", "assets"}, "manifest.json", "", {"moves"})
+        m = _object(_doc(root, "manifest.json"), {"schemaVersion", "catalogs", "maps", "encounters", "assets"}, "manifest.json", "", {"moves", "mixRecipes", "mixResults"})
         catalog_paths = [_valid_path(v, ".json", "manifest.json", f"/catalogs/{i}") for i, v in enumerate(_array(m["catalogs"], "manifest.json", "/catalogs"))]
         map_paths = [_valid_path(v, ".json", "manifest.json", f"/maps/{i}") for i, v in enumerate(_array(m["maps"], "manifest.json", "/maps"))]
         encounter_paths = [_valid_path(v, ".json", "manifest.json", f"/encounters/{i}") for i, v in enumerate(_array(m["encounters"], "manifest.json", "/encounters"))]
         move_paths = [_valid_path(v, ".json", "manifest.json", f"/moves/{i}") for i, v in enumerate(_array(m.get("moves", []), "manifest.json", "/moves"))]
-        all_docs = catalog_paths + map_paths + encounter_paths + move_paths
+        recipe_paths = [_valid_path(v, ".json", "manifest.json", f"/mixRecipes/{i}") for i, v in enumerate(_array(m.get("mixRecipes", []), "manifest.json", "/mixRecipes"))]
+        result_paths = [_valid_path(v, ".json", "manifest.json", f"/mixResults/{i}") for i, v in enumerate(_array(m.get("mixResults", []), "manifest.json", "/mixResults"))]
+        all_docs = catalog_paths + map_paths + encounter_paths + move_paths + recipe_paths + result_paths
         if len(all_docs) > MAX_FILES:
             _fail("file-count", "manifest.json", "", "manifest references more than 64 files")
         _unique(all_docs, "manifest.json", "", "manifest path")
-        catalog_paths.sort(); map_paths.sort(); encounter_paths.sort(); move_paths.sort()
+        catalog_paths.sort(); map_paths.sort(); encounter_paths.sort(); move_paths.sort(); recipe_paths.sort(); result_paths.sort()
         assets: list[Asset] = []
         asset_values = _array(m["assets"], "manifest.json", "/assets")
         for i, raw_asset in enumerate(asset_values):
@@ -365,7 +368,7 @@ def load_project(path: os.PathLike[str] | str, kernel_path: os.PathLike[str] | s
         moves: list[MoveRecord] = []
         for rel in move_paths:
             raw_move = _doc(root, rel)
-            d = _object(raw_move, {"schemaVersion", "id", "name", "windup", "recovery", "cooldown", "animation"}, rel, "", {"accuracy", "alwaysHit"})
+            d = _object(raw_move, {"schemaVersion", "id", "name", "windup", "recovery", "cooldown", "animation"}, rel, "", {"accuracy", "alwaysHit", "components"})
             mid = MoveId(_id(d["id"], rel, "/id"))
             name = _string(d["name"], rel, "/name")
             has_accuracy, has_always = "accuracy" in d, "alwaysHit" in d
@@ -384,11 +387,85 @@ def load_project(path: os.PathLike[str] | str, kernel_path: os.PathLike[str] | s
             animation = AssetId(_id(d["animation"], rel, "/animation"))
             if str(animation) not in assets_by_id:
                 _fail("reference", rel, "/animation", "animation asset does not resolve", mid)
-            moves.append(MoveRecord(mid, name, accuracy, always_hit, windup, recovery, cooldown, animation))
+            components = None
+            if "components" in d:
+                raw_components = _array(d["components"], rel, "/components", 4)
+                if not 1 <= len(raw_components) <= 4:
+                    _fail("mix-components", rel, "/components", "move requires 1 to 4 components", mid)
+                components = tuple(TypeId(_uint(v, 0, 9, rel, f"/components/{i}")) for i, v in enumerate(raw_components))
+                _unique([str(int(v)) for v in components], rel, "/components", "component type")
+            moves.append(MoveRecord(mid, name, accuracy, always_hit, windup, recovery, cooldown, animation, components))
         if len(moves) > MAX_ENTITIES:
             _fail("entity-limit", "manifest.json", "/moves", "more than 256 moves")
         _unique([str(v.id) for v in moves], "manifest.json", "/moves", "move ID")
         moves.sort(key=lambda v: str(v.id))
+
+        mix_results: list[MixResultDescriptor] = []
+        for rel in result_paths:
+            d = _object(_doc(root, rel), {"schemaVersion", "id", "name", "components", "power", "windup", "recovery", "cooldown", "animation"}, rel, "", {"accuracy", "alwaysHit"})
+            result_id = ResultId(_id(d["id"], rel, "/id"))
+            name = _string(d["name"], rel, "/name")
+            raw_components = _array(d["components"], rel, "/components", 4)
+            if not 1 <= len(raw_components) <= 4:
+                _fail("mix-components", rel, "/components", "result requires 1 to 4 components", result_id)
+            components = tuple(TypeId(_uint(v, 0, 9, rel, f"/components/{i}")) for i, v in enumerate(raw_components))
+            _unique([str(int(v)) for v in components], rel, "/components", "component type")
+            power = _uint(d["power"], 1, 200, rel, "/power")
+            has_accuracy, has_always = "accuracy" in d, "alwaysHit" in d
+            if has_accuracy == has_always:
+                _fail("accuracy-mode", rel, "", "specify exactly one of accuracy or alwaysHit", result_id)
+            if has_accuracy:
+                accuracy = _uint(d["accuracy"], 500, 10000, rel, "/accuracy")
+                always_hit = False
+            else:
+                if d["alwaysHit"] is not True:
+                    _fail("accuracy-mode", rel, "/alwaysHit", "alwaysHit must be true", result_id)
+                accuracy, always_hit = None, True
+            windup = _uint(d["windup"], 0, 600, rel, "/windup")
+            recovery = _uint(d["recovery"], 30, 600, rel, "/recovery")
+            cooldown = _uint(d["cooldown"], 60, 3600, rel, "/cooldown")
+            animation = AssetId(_id(d["animation"], rel, "/animation"))
+            if str(animation) not in assets_by_id:
+                _fail("reference", rel, "/animation", "animation asset does not resolve", result_id)
+            mix_results.append(MixResultDescriptor(result_id, name, components, power, accuracy, always_hit,
+                                                    windup, recovery, cooldown, animation))
+        if len(mix_results) > MAX_ENTITIES:
+            _fail("entity-limit", "manifest.json", "/mixResults", "more than 256 mix results")
+        _unique([str(v.id) for v in mix_results], "manifest.json", "/mixResults", "mix result ID")
+        _unique([str(v.id) for v in moves] + [str(v.id) for v in mix_results], "manifest.json", "/mixResults", "move/result ID")
+        mix_results.sort(key=lambda v: str(v.id))
+
+        mix_recipes: list[MixRecipe] = []
+        for rel in recipe_paths:
+            d = _object(_doc(root, rel), {"schemaVersion", "id", "sourceA", "sourceB", "result"}, rel, "")
+            recipe_id = RecipeId(_id(d["id"], rel, "/id"))
+            source_a = MoveId(_id(d["sourceA"], rel, "/sourceA"))
+            source_b = MoveId(_id(d["sourceB"], rel, "/sourceB"))
+            result_id = ResultId(_id(d["result"], rel, "/result"))
+            if source_a == source_b:
+                _fail("mix-self-pair", rel, "/sourceB", "recipe sources must be distinct", recipe_id)
+            if str(source_a) not in {str(v.id) for v in moves}:
+                _fail("reference", rel, "/sourceA", "source move does not resolve to a registered base move", recipe_id)
+            if str(source_b) not in {str(v.id) for v in moves}:
+                _fail("reference", rel, "/sourceB", "source move does not resolve to a registered base move", recipe_id)
+            move_by_id = {str(v.id): v for v in moves}
+            for pointer, source in (("/sourceA", source_a), ("/sourceB", source_b)):
+                source_record = move_by_id[str(source)]
+                if source_record.components is None or len(source_record.components) != 1:
+                    _fail("mix-source-components", rel, pointer, "recipe source must have exactly one declared component", recipe_id)
+            if str(result_id) not in {str(v.id) for v in mix_results}:
+                _fail("reference", rel, "/result", "result does not resolve to a registered mix descriptor", recipe_id)
+            mix_recipes.append(MixRecipe(recipe_id, source_a, source_b, result_id))
+        if len(mix_recipes) > MAX_ENTITIES:
+            _fail("entity-limit", "manifest.json", "/mixRecipes", "more than 256 mix recipes")
+        _unique([str(v.id) for v in mix_recipes], "manifest.json", "/mixRecipes", "mix recipe ID")
+        seen_pairs: set[tuple[str, str]] = set()
+        for recipe in mix_recipes:
+            pair = tuple(sorted((str(recipe.source_a), str(recipe.source_b))))
+            if pair in seen_pairs:
+                _fail("duplicate", "manifest.json", "/mixRecipes", "duplicate unordered mix source pair", recipe.id)
+            seen_pairs.add(pair)
+        mix_recipes.sort(key=lambda v: str(v.id))
 
         catalogs: list[Catalog] = []
         species_locations: list[tuple[Species, str, int]] = []
@@ -461,11 +538,25 @@ def load_project(path: os.PathLike[str] | str, kernel_path: os.PathLike[str] | s
             canonical["moves"] = [{"schemaVersion": SCHEMA, "id": str(v.id), "name": v.name,
                                     **({"alwaysHit": True} if v.always_hit else {"accuracy": v.accuracy}),
                                     "windup": v.windup, "recovery": v.recovery,
-                                    "cooldown": v.cooldown, "animation": str(v.animation)}
+                                    "cooldown": v.cooldown, "animation": str(v.animation),
+                                    **({"components": [int(x) for x in v.components]} if v.components is not None else {})}
                                    for v in moves]
+        if mix_results:
+            canonical["mixResults"] = [{"schemaVersion": SCHEMA, "id": str(v.id), "name": v.name,
+                                        "components": [int(x) for x in v.components], "power": v.power,
+                                        **({"alwaysHit": True} if v.always_hit else {"accuracy": v.accuracy}),
+                                        "windup": v.windup, "recovery": v.recovery,
+                                        "cooldown": v.cooldown, "animation": str(v.animation)}
+                                       for v in mix_results]
+        if mix_recipes:
+            canonical["mixRecipes"] = [{"schemaVersion": SCHEMA, "id": str(v.id),
+                                        "sourceA": sorted((str(v.source_a), str(v.source_b)))[0],
+                                        "sourceB": sorted((str(v.source_a), str(v.source_b)))[1],
+                                        "result": str(v.result)} for v in mix_recipes]
         canonical_bytes = json.dumps(canonical, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
         return LoadedProject(project, tuple(assets), tuple(catalogs), tuple(v[0] for v in species_locations),
-                             tuple(v[0] for v in encounters_loc), tuple(v[0] for v in maps_loc), tuple(moves), canonical_bytes,
+                             tuple(v[0] for v in encounters_loc), tuple(v[0] for v in maps_loc), tuple(moves),
+                             tuple(mix_recipes), tuple(mix_results), canonical_bytes,
                              hashlib.sha256(canonical_bytes).hexdigest())
     finally:
         root.close()

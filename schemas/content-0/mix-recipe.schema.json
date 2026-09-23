@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "content-0/mix-recipe.schema.json",
+  "title": "Content-0 authored mix recipe",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "id", "sourceA", "sourceB", "result"],
+  "properties": {
+    "schemaVersion": {"const": "content-0"},
+    "id": {"$ref": "#/$defs/id"},
+    "sourceA": {"$ref": "#/$defs/id"},
+    "sourceB": {"$ref": "#/$defs/id"},
+    "result": {"$ref": "#/$defs/id"}
+  },
+  "$comment": "The unordered source pair must be distinct and unique across the loaded recipe set. Both sources resolve to listed base moves with one declared component; result resolves to a declared metadata descriptor. M4 program registration is outside this schema and the host loader.",
+  "$defs": {
+    "id": {"type": "string", "pattern": "^[a-z][a-z0-9_-]{0,31}:[a-z][a-z0-9_-]{0,31}$"}
+  }
+}

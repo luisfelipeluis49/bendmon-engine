@@ -25,6 +25,9 @@ GOLDENS = (
     # Production runtime cancellation and invalid-target fizzle transitions.
     (ROOT / "tests" / "m6" / "runtime_edges_test.bend",
      "[1n, 1n]\n"),
+    # A terminal same-action KO keeps its witness; blocked actions earn no Harmony.
+    (ROOT / "tests" / "m6" / "effect_edges_test.bend",
+     "[1n, 1n]\n"),
 )
 
 

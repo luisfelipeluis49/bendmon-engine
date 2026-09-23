@@ -102,7 +102,13 @@ def main():
     run('battle RNG golden', ['bend', 'tests/battle/rng_test.bend'], output='[1n, 1n, 1n, 1n, 1n]')
     run('battle combat math golden', ['bend', 'tests/battle/combat_math_test.bend'], output='[1n, 1n, 1n, 1n, 1n, 1n]')
     run('battle combat resolver golden', ['bend', 'tests/battle/combat_resolver_test.bend'], output='[1n, 1n, 1n, 1n, 1n, 1n, 1n]')
-    run('battle roster golden', ['bend', 'tests/battle/roster_test.bend'], output='[1n, 1n, 1n, 5000n, 1000n, 9500n]')
+    # The interpreter can exhaust its machine stack on hosted runners for this
+    # recursive roster fixture. Compile the same production golden and run the
+    # native result with one worker, as the distribution path does.
+    run('battle roster native build', ['bend', 'tests/battle/roster_test.bend',
+        '-o', BUILD / 'roster_test'])
+    run('battle roster golden', [BUILD / 'roster_test', '--threads', '1',
+        '--gpu', 'off'], output='[1n, 1n, 1n, 5000n, 1000n, 9500n]')
     run('battle participants golden', ['bend', 'tests/battle/participants_test.bend'], output='[1n, 1n, 1n]')
     run('battle sources golden', ['bend', 'tests/battle/sources_test.bend'], output='[1n, 1n, 1n, 1n]')
     run('battle driver golden', ['bend', 'tests/battle/driver_test.bend'], output='[1n, 1n, 1n]')

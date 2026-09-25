@@ -16,7 +16,67 @@
     "species": {
       "type": "object", "additionalProperties": false,
       "required": ["id", "name", "sprite"],
-      "properties": {"id": {"$ref": "#/$defs/id"}, "name": {"$ref": "#/$defs/name"}, "sprite": {"$ref": "#/$defs/id"}}
+      "properties": {"id": {"$ref": "#/$defs/id"}, "name": {"$ref": "#/$defs/name"}, "sprite": {"$ref": "#/$defs/id"},
+        "progression": {"$ref": "#/$defs/progression"},
+        "levelMoves": {"type": "array", "maxItems": 256, "items": {"$ref": "#/$defs/levelMove"}},
+        "evolutions": {"type": "array", "maxItems": 256, "items": {"$ref": "#/$defs/evolutionRule"}}}
+    },
+    "evolutionRule": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "targetSpecies", "automatic", "predicates"],
+      "properties": {
+        "id": {"$ref": "#/$defs/id"},
+        "targetSpecies": {"$ref": "#/$defs/id"},
+        "automatic": {"type": "boolean"},
+        "predicates": {"type": "array", "maxItems": 4,
+                       "items": {"$ref": "#/$defs/evolutionPredicate"}}
+      }
+    },
+    "evolutionPredicate": {
+      "oneOf": [
+        {"type": "object", "additionalProperties": false,
+         "required": ["kind", "value"],
+         "properties": {"kind": {"const": "minimumLevel"},
+                        "value": {"type": "integer", "minimum": 1, "maximum": 200}}},
+        {"type": "object", "additionalProperties": false,
+         "required": ["kind", "value"],
+         "properties": {"kind": {"const": "minimumHarmony"},
+                        "value": {"type": "integer", "minimum": 0, "maximum": 5}}},
+        {"type": "object", "additionalProperties": false,
+         "required": ["kind", "value"],
+         "properties": {"kind": {"enum": ["requiredItem", "requiredFlag", "timeProfile", "knownMove", "learnedRecipe"]},
+                        "value": {"$ref": "#/$defs/id"}}}
+      ]
+    },
+    "levelMove": {
+      "type": "object", "additionalProperties": false,
+      "required": ["level", "move"],
+      "properties": {
+        "level": {"type": "integer", "minimum": 1, "maximum": 200},
+        "move": {"$ref": "#/$defs/id"}
+      }
+    },
+    "progression": {
+      "type": "object", "additionalProperties": false,
+      "required": ["baseStats", "captureRate", "baseXpYield", "baseCurrencyYield"],
+      "properties": {
+        "baseStats": {"$ref": "#/$defs/baseStats"},
+        "captureRate": {"type": "integer", "minimum": 500, "maximum": 9000},
+        "baseXpYield": {"type": "integer", "minimum": 1, "maximum": 1000},
+        "baseCurrencyYield": {"type": "integer", "minimum": 0, "maximum": 100000}
+      }
+    },
+    "baseStats": {
+      "type": "object", "additionalProperties": false,
+      "required": ["hp", "attack", "defense", "specialAttack", "specialDefense", "speed"],
+      "properties": {
+        "hp": {"type": "integer", "minimum": 1, "maximum": 500},
+        "attack": {"type": "integer", "minimum": 1, "maximum": 500},
+        "defense": {"type": "integer", "minimum": 1, "maximum": 500},
+        "specialAttack": {"type": "integer", "minimum": 1, "maximum": 500},
+        "specialDefense": {"type": "integer", "minimum": 1, "maximum": 500},
+        "speed": {"type": "integer", "minimum": 1, "maximum": 500}
+      }
     }
   }
 }

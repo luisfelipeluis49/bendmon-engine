@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "content-0/shop.schema.json",
+  "title": "Content-0 shop",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "id", "name", "items"],
+  "properties": {
+    "schemaVersion": {"const": "content-0"},
+    "id": {"type": "string", "pattern": "^[a-z][a-z0-9_-]{0,31}:[a-z][a-z0-9_-]{0,31}$"},
+    "name": {"type": "string", "minLength": 1, "maxLength": 128},
+    "items": {"type": "array", "maxItems": 256, "uniqueItems": true,
+              "items": {"type": "string", "pattern": "^[a-z][a-z0-9_-]{0,31}:[a-z][a-z0-9_-]{0,31}$"}}
+  }
+}

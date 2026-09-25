@@ -51,7 +51,7 @@ class SaveIdentityTests(unittest.TestCase):
             f"project content identity mismatch: expected {'b' * 64!r}, actual {'a' * 64!r}",
         )
         with self.assertRaisesRegex(
-            SaveIdentityError, "expected 'm6-1', actual 'm3-1'"
+            SaveIdentityError, "expected 'm7-1', actual 'm3-1'"
         ):
             require_exact_identity(identity, expected_content_digest="a" * 64)
 
@@ -62,14 +62,14 @@ class SaveIdentityTests(unittest.TestCase):
             expected_ruleset_version=LEGACY_RULESET_VERSION,
             expected_content_digest="a" * 64,
         )
-        with self.assertRaisesRegex(SaveIdentityError, "expected 'm6-1'"):
+        with self.assertRaisesRegex(SaveIdentityError, "expected 'm7-1'"):
             require_exact_identity(identity, expected_content_digest="a" * 64)
 
-    def test_new_runtime_defaults_to_m6(self) -> None:
+    def test_new_runtime_defaults_to_m7(self) -> None:
         identity = self.identity(ruleset_version=RULESET_VERSION)
         require_exact_identity(identity, expected_content_digest="a" * 64)
         with self.assertRaisesRegex(
-            SaveIdentityError, "expected 'm3-1', actual 'm6-1'"
+            SaveIdentityError, "expected 'm3-1', actual 'm7-1'"
         ):
             require_exact_identity(identity,
                                    expected_ruleset_version=LEGACY_RULESET_VERSION,

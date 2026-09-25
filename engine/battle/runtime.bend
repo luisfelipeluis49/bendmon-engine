@@ -11,6 +11,8 @@ import ./reducer.bend as Reducer
 import ./participants.bend as Participants
 import ./effects.bend as Effects
 import ./multi_type.bend as Multi
+import ../capture/core.bend as Capture
+import ../economy/core.bend as Economy
 
 # This file is the narrow runtime boundary for the current M3 battle slice.
 # It owns runtime snapshots and RNG transactions while Scheduler, Driver and
@@ -102,6 +104,23 @@ type QueuedReservation is Data:
     player_speed: U32,
     enemy_speed: U32
   }
+  QueuedCapture{
+    sequence: Nat,
+    source: Model.ActorId,
+    target: Model.ActorId,
+    item: Economy.ItemId,
+    species: Nat,
+    individual: Nat,
+    rate: U32,
+    item_multiplier: Capture.ItemMultiplier,
+    status: Capture.Status,
+    max_hp: U32,
+    uncapturable: Bool,
+    accepted_now: U32,
+    windup: U32,
+    recovery: U32,
+    priority: Nat
+  }
 
 type RuntimeEffectState is Data:
   RuntimeEffectState{
@@ -165,6 +184,21 @@ type RuntimeCommand is Data:
   RuntimeWait{source: Model.ActorId}
   RuntimeSwitch{source: Model.ActorId, incoming: Model.ActorId}
   RuntimeEscape{source: Model.ActorId}
+  RuntimeCapture{
+    source: Model.ActorId,
+    target: Model.ActorId,
+    item: Economy.ItemId,
+    species: Nat,
+    individual: Nat,
+    rate: U32,
+    item_multiplier: Capture.ItemMultiplier,
+    status: Capture.Status,
+    max_hp: U32,
+    uncapturable: Bool,
+    windup: U32,
+    recovery: U32,
+    priority: Nat
+  }
 
 # M4's production action boundary. The scheduler supplies its accepted snapshot
 # and execution-time world, then commits this pure atomic result alongside its
@@ -191,6 +225,10 @@ def RuntimeCommand.actor(command: RuntimeCommand) -> Model.ActorId:
     case RuntimeSwitch{source, incoming}:
       source
     case RuntimeEscape{+source}:
+      source
+    case RuntimeCapture{source, +target, item, species, individual, rate,
+        item_multiplier, status, max_hp, uncapturable, windup, recovery,
+        priority}:
       source
 
 def RuntimeCommand.le(left: RuntimeCommand, right: RuntimeCommand) -> Bool:
@@ -221,6 +259,10 @@ def runtime_model_command(command: RuntimeCommand) -> Model.Command:
       Model.BattleUtility{source, incoming, 0, 30, 0n}
     case RuntimeEscape{+source}:
       Model.BattleUtility{source, source, 0, 30, 0n}
+    case RuntimeCapture{source, target, item, species, individual, rate,
+        item_multiplier, status, max_hp, uncapturable, windup, recovery,
+        priority}:
+      Model.BattleUtility{source, target, windup, recovery, priority}
 
 def runtime_model_commands(
   commands: List<&2, RuntimeCommand>
@@ -315,7 +357,7 @@ def append_reservations(
   commands: List<&2, RuntimeCommand>, +sequence: Nat,
   +player_speed: U32, +enemy_speed: U32,
   out: List<&2, QueuedReservation>,
-  +effects: Maybe<&2, RuntimeEffectState>
+  +effects: Maybe<&2, RuntimeEffectState>, +accepted_now: U32
 ) -> List<&2, QueuedReservation>:
   match commands:
     case Nil{}:
@@ -327,14 +369,14 @@ def append_reservations(
           QueuedMove{sequence, SourceReservation{source, move, target},
             attacker} <>
             append_reservations(rest, 1n+sequence, player_speed, enemy_speed,
-              out, effects)
+              out, effects, accepted_now)
         case RuntimeEffectMove{source, +target, move, windup, recovery,
             cooldown, priority, recoil, attacker, program, snapshot}:
           QueuedEffectMove{sequence,
             SourceReservation{source, move, target}, attacker, recoil, program,
             queued_effect_snapshot(effects, snapshot)} <>
             append_reservations(rest, 1n+sequence, player_speed, enemy_speed,
-              out, effects)
+              out, effects, accepted_now)
         case RuntimeMixedMove{source, +target, windup, recovery, priority,
             recoil, attacker, +plan, actor_types, target_types, witnesses,
             snapshot}:
@@ -346,18 +388,26 @@ def append_reservations(
                 recoil, plan, actor_types, target_types, witnesses,
                 queued_effect_snapshot(effects, snapshot)} <>
                 append_reservations(rest, 1n+sequence, player_speed,
-                  enemy_speed, out, effects)
+                  enemy_speed, out, effects, accepted_now)
         case RuntimeSwitch{source, incoming}:
           QueuedSwitch{sequence, source, incoming} <>
             append_reservations(rest, 1n+sequence, player_speed, enemy_speed,
-              out, effects)
+              out, effects, accepted_now)
         case RuntimeEscape{source}:
           QueuedEscape{sequence, source, player_speed, enemy_speed} <>
             append_reservations(rest, 1n+sequence, player_speed, enemy_speed,
-              out, effects)
+              out, effects, accepted_now)
+        case RuntimeCapture{source, target, item, species, individual, rate,
+            item_multiplier, status, max_hp, uncapturable, windup, recovery,
+            priority}:
+          QueuedCapture{sequence, source, target, item, species, individual,
+            rate, item_multiplier, status, max_hp, uncapturable, accepted_now, windup,
+            recovery, priority} <>
+            append_reservations(rest, 1n+sequence, player_speed, enemy_speed,
+              out, effects, accepted_now)
         case RuntimeWait{source}:
           append_reservations(rest, 1n+sequence, player_speed, enemy_speed,
-            out, effects)
+            out, effects, accepted_now)
 
 type RuntimeEvent is Data:
   RuntimeMiss{source: Model.ActorId, target: Model.ActorId, draw: U32}
@@ -669,9 +719,41 @@ def runtime_witness_roster_valid(witnesses: List<&2, RuntimeMixWitness>,
     actors) : List<&2, Model.Actor>}
   runtime_witness_roster_matches(witnesses, sorted_actors)
 
+def capture_target_found(attacker: Maybe<&2, Model.Actor>,
+  target: Maybe<&2, Model.Actor>) -> Bool:
+  match attacker target:
+    case Some{source_actor} Some{target_actor}:
+      Scheduler.target_ok(source_actor, target_actor)
+    case _ _:
+      False{}
+
+def capture_runtime_wild(encounter: EncounterKind) -> Bool:
+  match encounter:
+    case WildEncounter{}: True{}
+    case _ : False{}
+
+def runtime_capture_target_hp_found(found: Maybe<&2, Model.Actor>) -> Nat:
+  match found:
+    case None{}: 0n
+    case Some{actor}:
+      match actor:
+        case Model.Actor{id, side, hp, speed, phase, cooldown}: hp
+
+def runtime_capture_target_hp(target: Model.ActorId,
+  +battle: Model.BattleState) -> Nat:
+  runtime_capture_target_hp_found(Scheduler.find_actor(target,
+    Reducer.state_actors(battle)))
+
+def capture_actor_target_valid(source: Model.ActorId,
+  target: Model.ActorId, +battle: Model.BattleState) -> Bool:
+  capture_target_found(Scheduler.find_actor(source,
+      Reducer.state_actors(battle)),
+    Scheduler.find_actor(target, Reducer.state_actors(battle)))
+
 
 def runtime_command_in_state(
   command: RuntimeCommand, +battle: Model.BattleState,
+  encounter: EncounterKind,
   trapped: List<&2, Model.ActorId>,
   defenders: List<&2, DefenderSnapshot>,
   effects: Maybe<&2, RuntimeEffectState>
@@ -681,6 +763,14 @@ def runtime_command_in_state(
       True{}
     case RuntimeEscape{source}:
       True{}
+    case RuntimeCapture{source, +target, item, species, individual, rate,
+        item_multiplier, status, max_hp, uncapturable, windup, recovery,
+        priority}:
+      Bool.and(capture_runtime_wild(encounter),
+          Bool.and(Bool.not(uncapturable),
+            Bool.and(capture_actor_target_valid(source, target, battle),
+              Capture.capture_data_valid(rate, item_multiplier, max_hp,
+                U32.from_nat(runtime_capture_target_hp(target, battle))))))
     case RuntimeMove{source, +target, move, windup, recovery, cooldown,
         priority, recoil, attacker}:
       Bool.and(attacker_profile_ok(attacker),
@@ -710,7 +800,8 @@ def runtime_command_ok(command: RuntimeCommand, +state: RuntimeState) -> Bool:
   match state:
     case RuntimeState{battle, rng, encounter, failed, sources, reservations,
         trapped, defenders, effects}:
-      runtime_command_in_state(command, battle, trapped, defenders, effects)
+      runtime_command_in_state(command, battle, encounter, trapped, defenders,
+        effects)
 
 def runtime_commands_ok(
   commands: List<&2, RuntimeCommand>, +state: RuntimeState
@@ -803,7 +894,8 @@ def queue_runtime_state(
           RuntimeState{next_battle, rng, encounter, failed_escapes, sources,
             append_reservations(commands, sequence,
               fastest_speed(Model.Player{}, actors),
-              fastest_speed(Model.Enemy{}, actors), reservations, effects), trapped,
+              fastest_speed(Model.Enemy{}, actors), reservations, effects,
+              now), trapped,
             defenders, effects}
 
 type RuntimeBattle is Data:
@@ -930,6 +1022,11 @@ def queued_sequence(queued: QueuedReservation) -> Nat:
     case QueuedSwitch{sequence, source, incoming}:
       sequence
     case QueuedEscape{sequence, source, player_speed, enemy_speed}:
+      sequence
+    case QueuedCapture{sequence, source, target, item, species, individual,
+        rate, item_multiplier, status, max_hp, uncapturable, accepted_now,
+        windup, recovery,
+        priority}:
       sequence
 
 def find_queued_put(
@@ -1082,6 +1179,12 @@ def runtime_reservations(
     case RuntimeState{battle, rng, encounter, failed, sources, reservations,
         trapped, defenders, effects}:
       reservations
+
+def runtime_effects(state: RuntimeState) -> Maybe<&2, RuntimeEffectState>:
+  match state:
+    case RuntimeState{battle, rng, encounter, failed, sources, reservations,
+        trapped, defenders, effects}:
+      effects
 
 def runtime_defenders(state: RuntimeState) -> List<&2, DefenderSnapshot>:
   match state:
@@ -2276,3 +2379,190 @@ def runtime_run_result(cursor: RuntimeCursor) -> RuntimeRunResult:
 def runtime_run(+fuel: Nat, state: RuntimeState) -> RuntimeRunResult:
   runtime_run_result(List.foldl(~&2, ~Nat, ~RuntimeCursor, ~runtime_run_one,
     List.range(fuel), RuntimeCursorActive{state, Nil{}, Nil{}}))
+
+# Additive M7-D capture transaction boundary. The M3-M6 RuntimeState keeps no
+# inventory or roster ownership; the M7 battle wrapper calls this pure action
+# transaction with its current item count and commits the returned battle/RNG
+# alongside the economy and roster update.
+type RuntimeCapturePlan is Data:
+  RuntimeCapturePlan{
+    source: Model.ActorId,
+    target: Model.ActorId,
+    destination: Capture.Destination,
+    chance: U32,
+    species: Nat,
+    individual: Nat
+  }
+
+type RuntimeCapturePlanResult is Data:
+  RuntimeCaptureAccepted{plan: RuntimeCapturePlan}
+  RuntimeCaptureRejected{reason: Capture.CaptureReason}
+
+type RuntimeCapturedIndividual is Data:
+  RuntimeCapturedIndividual{individual: Nat, species: Nat}
+
+type RuntimeCaptureOutcome is Data:
+  RuntimeCaptureFailed{}
+  RuntimeCaptureSucceeded{owned: RuntimeCapturedIndividual,
+    destination: Capture.Destination}
+
+type RuntimeCaptureTransaction is Data:
+  RuntimeCaptureRejectedAtAttempt{battle: Model.BattleState,
+    rng: Rng.RngState, item_quantity: U32}
+  RuntimeCaptureCommitted{battle: Model.AdvanceResult, rng: Rng.RngState,
+    item_quantity: U32, outcome: RuntimeCaptureOutcome, draw: U32,
+    candidates: Nat}
+
+def capture_live_target(valid_source: Bool, source: Model.ActorId,
+  target: Model.ActorId, +actors: List<&2, Model.Actor>) -> Bool:
+  match valid_source:
+    case False{}:
+      False{}
+    case True{}:
+      capture_target_found(Scheduler.find_actor(source, actors),
+        Scheduler.find_actor(target, actors))
+
+def capture_plan_target_live(target_eligible: Bool,
+  plan: RuntimeCapturePlan, +battle: Model.BattleState) -> Bool:
+  match plan battle:
+    case RuntimeCapturePlan{source, target, destination, chance,
+        species, individual}
+        Model.BattleState{now, wait_ticks, actors, events, sequence, status}:
+      capture_live_target(target_eligible, source, target, actors)
+
+def capture_remove_accumulate(equal: Bool, actor: Model.Actor,
+  actors: List<&2, Model.Actor>) -> List<&2, Model.Actor>:
+  match equal:
+    case True{}:
+      actors
+    case False{}:
+      actor <> actors
+
+def capture_remove_scan(remaining: List<&2, Model.Actor>, equal: Bool,
+  actor: Model.Actor, +target: Model.ActorId,
+  reversed: List<&2, Model.Actor>) -> List<&2, Model.Actor>:
+  match remaining:
+    case Nil{}:
+      +updated = capture_remove_accumulate(equal, actor, reversed)
+      List.reverse(&2, Model.Actor, updated)
+    case next <> rest:
+      match next:
+        case Model.Actor{+id, side, hp, speed, phase, cooldown}:
+          +updated = capture_remove_accumulate(equal, actor, reversed)
+          capture_remove_scan(rest, Model.ActorId.eq(target, id), next,
+            target, updated)
+
+def capture_target_remove(+target: Model.ActorId,
+  actors: List<&2, Model.Actor>) -> List<&2, Model.Actor>:
+  match actors:
+    case Nil{}:
+      Nil{}
+    case current <> rest:
+      match current:
+        case Model.Actor{+id, side, hp, speed, phase, cooldown}:
+          capture_remove_scan(rest, Model.ActorId.eq(target, id), current,
+            target, Nil{})
+
+def capture_plan_result(eligibility: Capture.CaptureEligibility,
+  source: Model.ActorId, target: Model.ActorId, species: Nat,
+  individual: Nat) -> RuntimeCapturePlanResult:
+  match eligibility:
+    case Capture.CaptureRejected{reason}:
+      RuntimeCaptureRejected{reason}
+    case Capture.CaptureAccepted{destination, chance}:
+      RuntimeCaptureAccepted{RuntimeCapturePlan{source, target, destination,
+        chance, species, individual}}
+
+def runtime_capture_accept(target_valid: Bool,
+  trainer_owned: Bool, boss: Bool, uncapturable: Bool,
+  item_available: Bool, party_room: Bool, storage_room: Bool,
+  source: Model.ActorId, target: Model.ActorId, species: Nat,
+  individual: Nat, +rate: U32, item: Capture.ItemMultiplier,
+  status: Capture.Status, +max_hp: U32, +current_hp: U32
+) -> RuntimeCapturePlanResult:
+  match target_valid:
+    case False{}:
+      RuntimeCaptureRejected{Capture.InvalidCaptureData{}}
+    case True{}:
+      capture_plan_result(Capture.plan_capture(trainer_owned, boss,
+        uncapturable, item_available, party_room, storage_room, rate, item,
+        status, max_hp, current_hp), source, target, species, individual)
+
+def capture_finish_success(
+  +battle: Model.BattleState, +tick: U32, +source: Model.ActorId,
+  +target: Model.ActorId, +recovery: U32, +sequence: Nat,
+  remaining: List<&2, Model.BattleEvent>
+) -> Model.AdvanceResult:
+  match battle:
+    case Model.BattleState{now, wait_ticks, actors, events, +next_sequence,
+        status}:
+      +removed = capture_target_remove(target, actors)
+      +reinforced = Participants.fill_reinforcements(removed)
+      +ready_tick = U32.add(tick, recovery)
+      +recovered = Reducer.set_recovery(source, ready_tick, ready_tick,
+        reinforced)
+      Reducer.finish_action(Reducer.battle_status(recovered), tick, wait_ticks,
+        recovered, remaining, next_sequence,
+        Model.BattleActionExecuted{source, target, 0n, 0n},
+        Reducer.schedule_ready(tick, source, recovery, next_sequence))
+
+def capture_commit_sampled(succeeded: Bool, +plan: RuntimeCapturePlan,
+  +battle: Model.BattleState, +next_rng: Rng.RngState, +draw: U32,
+  +candidates: Nat, +remaining: List<&2, Model.BattleEvent>,
+  +tick: U32, +recovery: U32, +sequence: Nat,
+  +item_quantity: U32) -> RuntimeCaptureTransaction:
+  match succeeded:
+    case False{}:
+      match plan:
+        case RuntimeCapturePlan{source, target, destination, chance,
+            species, individual}:
+          RuntimeCaptureCommitted{Reducer.fizzle_action(battle, tick, source,
+            target, recovery, 0, remaining), next_rng,
+            U32.sub(item_quantity, 1), RuntimeCaptureFailed{}, draw,
+            candidates}
+    case True{}:
+      match plan:
+        case RuntimeCapturePlan{source, target, destination, chance,
+            species, individual}:
+          RuntimeCaptureCommitted{capture_finish_success(battle, tick, source,
+            target, recovery, sequence, remaining), next_rng,
+            U32.sub(item_quantity, 1), RuntimeCaptureSucceeded{
+              RuntimeCapturedIndividual{individual, species}, destination},
+            draw, candidates}
+
+def runtime_capture_sampled(sample: Rng.RngSampleResult,
+  +plan: RuntimeCapturePlan, +battle: Model.BattleState,
+  +original_rng: Rng.RngState, +item_quantity: U32,
+  +remaining: List<&2, Model.BattleEvent>, +tick: U32, +recovery: U32,
+  +sequence: Nat) -> RuntimeCaptureTransaction:
+  match sample:
+    case Rng.RngSampled{next_state, +draw, candidates}:
+      match plan:
+        case RuntimeCapturePlan{source, target, destination, chance,
+            species, individual}:
+          capture_commit_sampled(U32.is_lt(draw, chance), plan, battle,
+            next_state, draw, candidates, remaining, tick, recovery,
+            sequence, item_quantity)
+    case _:
+      RuntimeCaptureRejectedAtAttempt{battle, original_rng, item_quantity}
+
+def runtime_capture_attempt_ready(ready: Bool, +plan: RuntimeCapturePlan,
+  +battle: Model.BattleState, +rng: Rng.RngState, +item_quantity: U32,
+  +remaining: List<&2, Model.BattleEvent>, +tick: U32, +recovery: U32,
+  +sequence: Nat) -> RuntimeCaptureTransaction:
+  match ready:
+    case False{}:
+      RuntimeCaptureRejectedAtAttempt{battle, rng, item_quantity}
+    case True{}:
+      runtime_capture_sampled(Rng.sample(rng, 10000), plan, battle, rng,
+        item_quantity, remaining, tick, recovery, sequence)
+
+def runtime_capture_attempt(+plan: RuntimeCapturePlan,
+  target_valid: Bool, +battle: Model.BattleState, +rng: Rng.RngState,
+  +item_quantity: U32, +remaining: List<&2, Model.BattleEvent>,
+  +tick: U32, +recovery: U32, +sequence: Nat
+) -> RuntimeCaptureTransaction:
+  runtime_capture_attempt_ready(Bool.and(
+      capture_plan_target_live(target_valid, plan, battle),
+      U32.is_ge(item_quantity, 1)), plan, battle, rng, item_quantity,
+    remaining, tick, recovery, sequence)

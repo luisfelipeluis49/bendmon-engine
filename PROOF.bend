@@ -128,3 +128,24 @@ def Laws.training_in_battle_guard(designated_trainer, tokens, observed,
 def Laws.training_rejection_preserves_transaction(tokens, state, recipe,
   reason):
   {==}
+
+def Laws.capture_full_hp_floor_reference():
+  {==}
+
+def Laws.capture_trainer_preaccept_rejection():
+  {==}
+
+def Laws.progression_level_200_cap_reference():
+  {==}
+
+def Laws.inventory_empty_tier_rejection():
+  {==}
+
+def Laws.inventory_tier_identity_mismatch():
+  {==}
+
+def Laws.captured_duplicate_identity_rejection():
+  {==}
+
+def Laws.reward_draw_preserves_transaction():
+  {==}

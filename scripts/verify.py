@@ -7,6 +7,7 @@ import json
 import os
 from pathlib import Path
 import random
+import re
 import shutil
 import subprocess
 import sys
@@ -49,12 +50,12 @@ def main():
     if not shutil.which('node'):
         raise RuntimeError('Node.js is required for the JavaScript differential fixture')
     run('toolchain pin', [sys.executable, ROOT / 'scripts/setup_toolchain.py'])
-    run('version', ['bend', '--version'], output='bend 2.0.19')
+    run('version', ['bend', '--version'], output='bend 2.0.27')
     # This is the canonical law gate, invoking the workspace-pinned bend.
     run('canonical proof gate', ['bend', 'PROOF.bend'], contains='All terms check.')
     run('false law must fail', ['bend', 'tests/feasibility/false_law.bend'], expected=None, contains='Error:')
     run('open law must fail', ['bend', 'tests/feasibility/open_law.bend'], expected=None, contains='TODO')
-    for base in ['engine', 'platform', 'tests/feasibility', 'tests/content']:
+    for base in ['engine', 'platform', 'tests/feasibility', 'tests/content', 'tests/m7']:
         for path in sorted((ROOT / base).rglob('*.bend')):
             if path.name in {'false_law.bend', 'open_law.bend'}:
                 continue
@@ -160,6 +161,22 @@ def main():
     run('M6 pure fixture and cross-target suite', [sys.executable, '-m',
         'unittest', 'tests.m6.test_core_fixtures',
         'tests.m6.test_cross_target_core', '-v'], timeout=480)
+    run('M7 generated progression and XP parity',
+        [sys.executable, '-m', 'unittest', 'tests.m7.test_xp_table',
+         'tests.m7.test_generated_progression', '-v'], timeout=360)
+    for fixture in sorted((ROOT / 'tests/m7').glob('*_test.bend')):
+        stem = fixture.stem
+        native = BUILD / f'm7_{stem}'
+        javascript = BUILD / f'm7_{stem}.js'
+        build_timeout = 480 if stem.startswith('session_') or stem == 'playable_test' else 180
+        run(f'M7 {stem} native build', ['bend', fixture, '-o', native], timeout=build_timeout)
+        run(f'M7 {stem} JS build', ['bend', fixture, '-o', javascript], timeout=build_timeout)
+        native_result = run(f'M7 {stem} native golden',
+                            [native, '--threads', '1', '--gpu', 'off'])
+        js_result = run(f'M7 {stem} JS golden', ['node', javascript])
+        assert native_result.stdout == js_result.stdout
+        assert re.fullmatch(r'\[(?:1n|True\{\})(?:, (?:1n|True\{\}))*\]',
+                            native_result.stdout.strip()), stem
     run('battle replay fold golden', ['bend', 'tests/replay/fold_test.bend'], output='[1n, 1n, 1n, 1n]')
     run('battle runtime replay golden', ['bend', 'tests/replay/runtime_fold_test.bend'], output='[1n, 1n, 1n]')
     run('battle effect replay golden', ['bend', 'tests/replay/runtime_effect_fold_test.bend'], output='[1n]')
@@ -182,4 +199,4 @@ if __name__ == '__main__':
         sys.exit(1)
     finally:
         EVIDENCE.mkdir(parents=True, exist_ok=True)
-        (EVIDENCE / 'verification.json').write_text(json.dumps({'checks': RESULTS, 'scope': 'foundation, content-0 loading and milestone support artifacts; not full gameplay verification'}, indent=2) + '\n')
+        (EVIDENCE / 'verification.json').write_text(json.dumps({'checks': RESULTS, 'scope': 'M0-M7 deterministic engine, content, persistence, session integration and cross-target fixtures; visual gameplay is outside this gate'}, indent=2) + '\n')

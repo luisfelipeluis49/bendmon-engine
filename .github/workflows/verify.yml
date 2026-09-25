@@ -1,4 +1,4 @@
-name: Verify Bend foundation
+name: Verify Bend engine
 on:
   push:
   pull_request:
@@ -7,7 +7,7 @@ permissions:
 jobs:
   linux-cpu:
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - name: Set up Node.js for JavaScript differential checks
@@ -20,10 +20,10 @@ jobs:
         run: python3 scripts/setup_toolchain.py
       - name: Verify laws, negative gates and native fixtures
         run: python3 scripts/verify.py
-      - name: Upload feasibility evidence
+      - name: Upload verification evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: linux-cpu-feasibility
+          name: linux-cpu-verification
           path: build/evidence/
           if-no-files-found: ignore

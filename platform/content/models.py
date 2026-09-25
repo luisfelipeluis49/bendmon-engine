@@ -14,6 +14,8 @@ MoveId = NewType("MoveId", str)
 TypeId = NewType("TypeId", int)
 RecipeId = NewType("RecipeId", str)
 ResultId = NewType("ResultId", str)
+ItemId = NewType("ItemId", str)
+ShopId = NewType("ShopId", str)
 
 
 @dataclass(frozen=True, slots=True)
@@ -26,10 +28,74 @@ class Asset:
 
 
 @dataclass(frozen=True, slots=True)
+class SpeciesProgression:
+    base_hp: int
+    base_attack: int
+    base_defense: int
+    base_special_attack: int
+    base_special_defense: int
+    base_speed: int
+    capture_rate: int
+    base_xp_yield: int
+    base_currency_yield: int
+
+
+@dataclass(frozen=True, slots=True)
+class LevelMove:
+    level: int
+    move: MoveId
+
+
+@dataclass(frozen=True, slots=True)
+class EvolutionPredicate:
+    kind: str
+    value: int | str
+
+
+@dataclass(frozen=True, slots=True)
+class EvolutionRule:
+    id: str
+    target_species: SpeciesId
+    automatic: bool
+    predicates: tuple[EvolutionPredicate, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class CapacityTier:
+    party: int
+    moves: int
+    storage: int
+    item_stack: int
+    inventory_entries: int
+    currency: int
+
+
+@dataclass(frozen=True, slots=True)
+class ItemRecord:
+    id: ItemId
+    name: str
+    buy_price: int
+    unsellable: bool
+    capture_multiplier_numerator: int | None
+    capture_multiplier_denominator: int | None
+    icon: AssetId | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class ShopRecord:
+    id: ShopId
+    name: str
+    items: tuple[ItemId, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class Species:
     id: SpeciesId
     name: str
     sprite: AssetId
+    progression: SpeciesProgression | None = None
+    level_moves: tuple[LevelMove, ...] = ()
+    evolutions: tuple[EvolutionRule, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -45,9 +111,16 @@ class EncounterEntry:
 
 
 @dataclass(frozen=True, slots=True)
+class ItemReward:
+    item: ItemId
+    quantity: int
+
+
+@dataclass(frozen=True, slots=True)
 class Encounter:
     id: EncounterId
     entries: tuple[EncounterEntry, ...]
+    item_rewards: tuple[ItemReward, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -100,6 +173,7 @@ class Project:
     name: str
     ruleset: str
     entry_map: MapId
+    capacity_tiers: tuple[CapacityTier, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -113,5 +187,7 @@ class LoadedProject:
     moves: tuple[MoveRecord, ...]
     mix_recipes: tuple[MixRecipe, ...]
     mix_results: tuple[MixResultDescriptor, ...]
+    items: tuple[ItemRecord, ...]
+    shops: tuple[ShopRecord, ...]
     canonical_json: bytes
     content_hash: str

@@ -7,7 +7,7 @@ import json
 from typing import Any, Iterable
 
 from .canonical_json import CanonicalJSONError, canonical_json
-from .battle_replay import M6_RULESET_VERSION
+from .battle_replay import M6_RULESET_VERSION, M7_RULESET_VERSION
 from .save_identity import SaveIdentity, SaveIdentityError, require_exact_identity
 
 MAX_HARMONY_PROGRESS = 40
@@ -126,10 +126,10 @@ def encode_learning_state(
     *,
     known_recipe_ids: Iterable[int],
 ) -> bytes:
-    """Encode all roster members against the selected M6 recipe catalog."""
-    if identity.ruleset_version != M6_RULESET_VERSION:
+    """Encode all roster members against the selected recipe catalog."""
+    if identity.ruleset_version not in (M6_RULESET_VERSION, M7_RULESET_VERSION):
         raise LearningStateCodecError(
-            f"M6 learning state requires ruleset {M6_RULESET_VERSION!r}"
+            "learning state requires ruleset 'm6-1' or 'm7-1'"
         )
     roster = _unique_roster(roster_ids)
     ordered = _validated_records(roster, records, _known_recipes(known_recipe_ids))
@@ -176,9 +176,9 @@ def decode_learning_state(
     known_recipe_ids: Iterable[int],
 ) -> tuple[IndividualLearning, ...]:
     """Decode canonical bytes under exact identity and known recipe IDs."""
-    if expected_identity.ruleset_version != M6_RULESET_VERSION:
+    if expected_identity.ruleset_version not in (M6_RULESET_VERSION, M7_RULESET_VERSION):
         raise LearningStateCodecError(
-            f"M6 learning state requires ruleset {M6_RULESET_VERSION!r}"
+            "learning state requires ruleset 'm6-1' or 'm7-1'"
         )
     if type(encoded) is not bytes:
         raise LearningStateCodecError("encoded learning state must be bytes")

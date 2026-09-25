@@ -28,7 +28,8 @@ def main(argv: list[str]) -> int:
         return 1
     print(json.dumps({"ok": True, "projectId": str(loaded.project.id), "contentHash": loaded.content_hash,
                       "counts": {"assets": len(loaded.assets), "species": len(loaded.species),
-                                 "encounters": len(loaded.encounters), "maps": len(loaded.maps)}}, separators=(",", ":")))
+                                 "encounters": len(loaded.encounters), "maps": len(loaded.maps),
+                                 "items": len(loaded.items), "shops": len(loaded.shops)}}, separators=(",", ":")))
     return 0
 
 

@@ -10,10 +10,23 @@
     "id": {"$ref": "#/$defs/id"},
     "name": {"$ref": "#/$defs/name"},
     "ruleset": {"const": "unassigned"},
-    "entryMap": {"$ref": "#/$defs/id"}
+    "entryMap": {"$ref": "#/$defs/id"},
+    "capacityTiers": {"type": "array", "minItems": 1, "maxItems": 16, "items": {"$ref": "#/$defs/capacityTier"}}
   },
   "$defs": {
     "id": {"type": "string", "pattern": "^[a-z][a-z0-9_-]{0,31}:[a-z][a-z0-9_-]{0,31}$"},
-    "name": {"type": "string", "minLength": 1, "maxLength": 128}
+    "name": {"type": "string", "minLength": 1, "maxLength": 128},
+    "capacityTier": {
+      "type": "object", "additionalProperties": false,
+      "required": ["party", "moves", "storage", "itemStack", "inventoryEntries", "currency"],
+      "properties": {
+        "party": {"type": "integer", "minimum": 1, "maximum": 12},
+        "moves": {"type": "integer", "minimum": 1, "maximum": 8},
+        "storage": {"type": "integer", "minimum": 1, "maximum": 10000},
+        "itemStack": {"type": "integer", "minimum": 1, "maximum": 9999},
+        "inventoryEntries": {"type": "integer", "minimum": 1, "maximum": 4096},
+        "currency": {"type": "integer", "minimum": 1, "maximum": 999999999}
+      }
+    }
   }
 }

@@ -8,10 +8,20 @@
   "properties": {
     "schemaVersion": {"const": "content-0"},
     "id": {"$ref": "#/$defs/id"},
-    "entries": {"type": "array", "maxItems": 256, "items": {"$ref": "#/$defs/entry"}}
+    "entries": {"type": "array", "maxItems": 256, "items": {"$ref": "#/$defs/entry"}},
+    "itemRewards": {"type": "array", "maxItems": 256,
+                    "items": {"$ref": "#/$defs/itemReward"}}
   },
   "$defs": {
     "id": {"type": "string", "pattern": "^[a-z][a-z0-9_-]{0,31}:[a-z][a-z0-9_-]{0,31}$"},
+    "itemReward": {
+      "type": "object", "additionalProperties": false,
+      "required": ["item", "quantity"],
+      "properties": {
+        "item": {"$ref": "#/$defs/id"},
+        "quantity": {"type": "integer", "minimum": 1, "maximum": 9999}
+      }
+    },
     "entry": {
       "type": "object", "additionalProperties": false,
       "required": ["species", "level"],

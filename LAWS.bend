@@ -19,6 +19,11 @@ import ./engine/mixing/recipe.bend as MixRecipe
 import ./engine/mixing/model.bend as MixModel
 import ./engine/mixing/runtime.bend as MixRuntime
 import ./engine/mixing/training.bend as MixTraining
+import ./engine/capture/core.bend as Capture
+import ./engine/progression/core.bend as Progression
+import ./engine/economy/core.bend as Economy
+import ./engine/economy/roster.bend as EconomyRoster
+import ./engine/m7/rewards.bend as M7Rewards
 
 # BOOT-1: adding zero preserves the headless accumulator for every Nat state.
 # This is a toolchain/bootstrap law, not a battle or progression specification.
@@ -345,6 +350,76 @@ law training_rejection_preserves_transaction:
   {MixTraining.finish_train(Some{reason}, tokens, state, recipe) ==
     MixTraining.TrainingRejected{state, tokens, reason}
     : MixTraining.TrainingResult}
+
+
+# CAP-CHANCE: the production capture planner floors the exact full-HP ratio
+# once, then applies the common probability clamp.
+law capture_full_hp_floor_reference:
+  {Capture.capture_chance(500, Capture.ItemMultiplier{1n, 1n},
+      Capture.CaptureOther{}, 100, 100) == Capture.ChanceValue{166}
+    : Capture.ChanceResult}
+
+
+# CAP-PRECHECK: a restricted trainer target rejects before even an available
+# item or destination can turn it into an accepted capture plan.
+law capture_trainer_preaccept_rejection:
+  {Capture.plan_capture(True{}, False{}, False{}, True{}, True{}, True{},
+      9000, Capture.ItemMultiplier{4n, 1n}, Capture.CaptureSleep{}, 100, 1) ==
+    Capture.CaptureRejected{Capture.TrainerTarget{}}
+    : Capture.CaptureEligibility}
+
+
+# PROG-TABLE: the shipped terminal threshold and XP cap agree.
+law progression_level_200_cap_reference:
+  {Progression.xp_cap() == 197029900 : U32}
+
+
+# INV-TIERS: an empty tier table rejects a valid bounded owner state without
+# inventory, party, storage or currency mutation.
+law inventory_empty_tier_rejection:
+  {Economy.change_tier(0n, [],
+      Economy.State{Economy.Capacity{1n, 1n, 1n, 1n, 1n, 1n},
+        0n, 0n, 0n, 0n, 0n, []}) ==
+    Economy.Rejected{Economy.State{
+      Economy.Capacity{1n, 1n, 1n, 1n, 1n, 1n}, 0n, 0n, 0n, 0n,
+      0n, []}, Economy.InvalidTierTable{}}
+    : Economy.Transaction}
+
+
+# INV-TIER-ID: a bounded saved capacity cannot impersonate a different
+# project-authored tier row, even when each capacity is individually legal.
+law inventory_tier_identity_mismatch:
+  {Economy.state_matches_tiers(
+      Economy.State{Economy.Capacity{2n, 1n, 1n, 1n, 1n, 1n},
+        0n, 0n, 0n, 0n, 0n, []},
+      [Economy.CapacityTier{Economy.Capacity{1n, 1n, 1n, 1n, 1n, 1n}}])
+    == False{} : Bool}
+
+
+# INV-IDENTITY: a captured ID already in the party cannot create a second
+# owner entry; the complete concrete roster is returned unchanged.
+law captured_duplicate_identity_rejection:
+  {EconomyRoster.capture(EconomyRoster.Roster{
+      Economy.Capacity{1n, 1n, 1n, 1n, 1n, 1n},
+      [EconomyRoster.IndividualId{1n}], []},
+      EconomyRoster.IndividualId{1n}) ==
+    EconomyRoster.RosterRejected{EconomyRoster.Roster{
+      Economy.Capacity{1n, 1n, 1n, 1n, 1n, 1n},
+      [EconomyRoster.IndividualId{1n}], []},
+      EconomyRoster.DuplicateIndividual{EconomyRoster.IndividualId{1n}}}
+    : EconomyRoster.RosterResult}
+
+
+# REWARD-TERM: an ineligible terminal Draw cannot mutate the complete
+# progression/economy reward transaction or its replay delivery ledger.
+law reward_draw_preserves_transaction:
+  {M7Rewards.transaction(Progression.RewardDraw{}, 1n, [], [], [],
+      Economy.State{Economy.Capacity{1n, 1n, 1n, 1n, 1n, 1n},
+        0n, 0n, 0n, 0n, 0n, []}, Progression.RewardLedger{[]}) ==
+    M7Rewards.RewardResult{M7Rewards.RewardSkipped{}, [],
+      Economy.State{Economy.Capacity{1n, 1n, 1n, 1n, 1n, 1n},
+        0n, 0n, 0n, 0n, 0n, []}, Progression.RewardLedger{[]}}
+    : M7Rewards.TransactionResult}
 
 
 # Approved future proof obligations (2026-09-21 decision packet):

@@ -13,6 +13,8 @@
     "moves": {"type": "array", "maxItems": 256, "uniqueItems": true, "items": {"$ref": "#/$defs/jsonPath"}},
     "mixRecipes": {"type": "array", "maxItems": 256, "uniqueItems": true, "items": {"$ref": "#/$defs/jsonPath"}},
     "mixResults": {"type": "array", "maxItems": 256, "uniqueItems": true, "items": {"$ref": "#/$defs/jsonPath"}},
+    "items": {"type": "array", "maxItems": 256, "uniqueItems": true, "items": {"$ref": "#/$defs/jsonPath"}},
+    "shops": {"type": "array", "maxItems": 256, "uniqueItems": true, "items": {"$ref": "#/$defs/jsonPath"}},
     "assets": {"type": "array", "maxItems": 256, "items": {"$ref": "#/$defs/asset"}}
   },
   "$defs": {

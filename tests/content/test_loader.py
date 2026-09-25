@@ -56,6 +56,242 @@ class LoaderTests(unittest.TestCase):
         with self.assertRaisesRegex(Exception, "cannot assign"):
             loaded.project.name = "changed"  # type: ignore[misc]
 
+    def test_encounter_level_rejects_values_outside_playable_range(self) -> None:
+        path = self.root / "data/encounter.json"
+        encounter = json.loads(path.read_text())
+        for level in (0, 201):
+            with self.subTest(level=level):
+                encounter["entries"][0]["level"] = level
+                write_json(path, encounter)
+                with self.assertRaises(ContentError) as caught:
+                    load_project(self.root, self.kernel)
+                self.assertEqual(caught.exception.diagnostics[0].pointer,
+                                 "/entries/0/level")
+
+    def test_species_progression_is_bounded_and_changes_content_identity(self) -> None:
+        original = load_project(self.root, self.kernel).content_hash
+        catalog_path = self.root / "data/catalog.json"
+        catalog = json.loads(catalog_path.read_text())
+        profile = {
+            "baseStats": {"hp": 80, "attack": 55, "defense": 40,
+                          "specialAttack": 70, "specialDefense": 45,
+                          "speed": 65},
+            "captureRate": 500, "baseXpYield": 1000,
+            "baseCurrencyYield": 0,
+        }
+        catalog["species"][0]["progression"] = profile
+        write_json(catalog_path, catalog)
+        loaded = load_project(self.root, self.kernel)
+        self.assertNotEqual(original, loaded.content_hash)
+        self.assertEqual(loaded.species[0].progression.base_hp, 80)
+        self.assertEqual(loaded.species[0].progression.base_xp_yield, 1000)
+        self.assertEqual(json.loads(loaded.canonical_json)["catalogs"][0]
+                         ["species"][0]["progression"]["captureRate"], 500)
+        catalog["species"][0]["progression"] = dict(reversed(list(profile.items())))
+        write_json(catalog_path, catalog)
+        self.assertEqual(loaded.content_hash, load_project(self.root, self.kernel).content_hash)
+
+        for key, invalid, pointer in (
+            ("captureRate", 499, "/species/0/progression/captureRate"),
+            ("baseXpYield", 1001, "/species/0/progression/baseXpYield"),
+            ("baseCurrencyYield", -1, "/species/0/progression/baseCurrencyYield"),
+        ):
+            bad = dict(profile, **{key: invalid})
+            catalog["species"][0]["progression"] = bad
+            write_json(catalog_path, catalog)
+            with self.subTest(key=key), self.assertRaises(ContentError) as caught:
+                load_project(self.root, self.kernel)
+            self.assertEqual(caught.exception.diagnostics[0].pointer, pointer)
+        catalog["species"][0]["progression"] = dict(
+            profile, baseStats=dict(profile["baseStats"], hp=True))
+        write_json(catalog_path, catalog)
+        with self.assertRaises(ContentError) as caught:
+            load_project(self.root, self.kernel)
+        self.assertEqual(caught.exception.diagnostics[0].pointer,
+                         "/species/0/progression/baseStats/hp")
+
+    def test_capacity_tiers_are_bounded_monotone_and_hashed(self) -> None:
+        before = load_project(self.root, self.kernel).content_hash
+        path = self.root / "project.json"
+        project = json.loads(path.read_text())
+        base = {"party": 6, "moves": 4, "storage": 1000,
+                "itemStack": 999, "inventoryEntries": 512, "currency": 9999999}
+        project["capacityTiers"] = [base, dict(base, party=12, moves=8)]
+        write_json(path, project)
+        loaded = load_project(self.root, self.kernel)
+        self.assertNotEqual(before, loaded.content_hash)
+        self.assertEqual(loaded.project.capacity_tiers[1].party, 12)
+        project["capacityTiers"][1]["moves"] = 3
+        write_json(path, project)
+        with self.assertRaises(ContentError) as caught:
+            load_project(self.root, self.kernel)
+        self.assertEqual(caught.exception.diagnostics[0].code, "capacity-tier")
+        project["capacityTiers"][1]["moves"] = 9
+        write_json(path, project)
+        with self.assertRaises(ContentError) as caught:
+            load_project(self.root, self.kernel)
+        self.assertEqual(caught.exception.diagnostics[0].pointer,
+                         "/capacityTiers/1/moves")
+
+    def test_capture_item_price_and_exact_multiplier_are_hashed(self) -> None:
+        before = load_project(self.root, self.kernel).content_hash
+        manifest_path = self.root / "manifest.json"
+        manifest = json.loads(manifest_path.read_text())
+        manifest["items"] = ["data/capsule.json"]
+        write_json(manifest_path, manifest)
+        item_path = self.root / "data/capsule.json"
+        item = {"schemaVersion": "content-0", "id": "demo:capsule",
+                "name": "Capsule", "buyPrice": 100,
+                "icon": "demo:pixel",
+                "captureMultiplier": {"numerator": 3, "denominator": 2}}
+        write_json(item_path, item)
+        loaded = load_project(self.root, self.kernel)
+        self.assertNotEqual(before, loaded.content_hash)
+        self.assertEqual(loaded.items[0].capture_multiplier_numerator, 3)
+        self.assertEqual(loaded.items[0].icon, "demo:pixel")
+        item["captureMultiplier"]["numerator"] = 8
+        item["captureMultiplier"]["denominator"] = 1
+        write_json(item_path, item)
+        with self.assertRaises(ContentError) as caught:
+            load_project(self.root, self.kernel)
+        self.assertEqual(caught.exception.diagnostics[0].code,
+                         "capture-multiplier")
+        item["captureMultiplier"] = {"numerator": 1, "denominator": 2}
+        item["buyPrice"] = True
+        write_json(item_path, item)
+        with self.assertRaises(ContentError) as caught:
+            load_project(self.root, self.kernel)
+        self.assertEqual(caught.exception.diagnostics[0].pointer, "/buyPrice")
+        item["buyPrice"] = 100
+        item["icon"] = "demo:missing"
+        write_json(item_path, item)
+        with self.assertRaises(ContentError) as caught:
+            load_project(self.root, self.kernel)
+        self.assertEqual(caught.exception.diagnostics[0].pointer, "/icon")
+
+    def test_shop_offers_resolve_items_and_enter_digest(self) -> None:
+        item = {"schemaVersion": "content-0", "id": "demo:capsule",
+                "name": "Capsule", "buyPrice": 100}
+        write_json(self.root / "data/item.json", item)
+        shop = {"schemaVersion": "content-0", "id": "demo:market",
+                "name": "Market", "items": ["demo:capsule"]}
+        write_json(self.root / "data/shop.json", shop)
+        manifest_path = self.root / "manifest.json"
+        manifest = json.loads(manifest_path.read_text())
+        manifest["items"] = ["data/item.json"]
+        manifest["shops"] = ["data/shop.json"]
+        write_json(manifest_path, manifest)
+        loaded = load_project(self.root, self.kernel)
+        self.assertEqual(loaded.shops[0].items, ("demo:capsule",))
+        before = loaded.content_hash
+        shop["name"] = "New Market"
+        write_json(self.root / "data/shop.json", shop)
+        self.assertNotEqual(before, load_project(self.root, self.kernel).content_hash)
+        shop["items"] = ["demo:missing"]
+        write_json(self.root / "data/shop.json", shop)
+        with self.assertRaises(ContentError) as caught:
+            load_project(self.root, self.kernel)
+        self.assertEqual(caught.exception.diagnostics[0].pointer, "/items/0")
+
+    def test_level_moves_resolve_and_sort_canonically(self) -> None:
+        move = {"schemaVersion": "content-0", "id": "demo:quick",
+                "name": "Quick", "alwaysHit": True, "windup": 0,
+                "recovery": 30, "cooldown": 60, "animation": "demo:pixel"}
+        write_json(self.root / "data/move.json", move)
+        manifest_path = self.root / "manifest.json"
+        manifest = json.loads(manifest_path.read_text())
+        manifest["moves"] = ["data/move.json"]
+        write_json(manifest_path, manifest)
+        catalog_path = self.root / "data/catalog.json"
+        catalog = json.loads(catalog_path.read_text())
+        catalog["species"][0]["levelMoves"] = [
+            {"level": 20, "move": "demo:quick"},
+            {"level": 5, "move": "demo:quick"},
+        ]
+        write_json(catalog_path, catalog)
+        loaded = load_project(self.root, self.kernel)
+        self.assertEqual([entry.level for entry in loaded.species[0].level_moves],
+                         [5, 20])
+        catalog["species"][0]["levelMoves"].reverse()
+        write_json(catalog_path, catalog)
+        self.assertEqual(loaded.content_hash,
+                         load_project(self.root, self.kernel).content_hash)
+        catalog["species"][0]["levelMoves"][0]["move"] = "demo:missing"
+        write_json(catalog_path, catalog)
+        with self.assertRaises(ContentError) as caught:
+            load_project(self.root, self.kernel)
+        self.assertEqual(caught.exception.diagnostics[0].code, "reference")
+    def test_evolution_rules_validate_and_sort_by_rule_id(self) -> None:
+        catalog_path = self.root / "data/catalog.json"
+        catalog = json.loads(catalog_path.read_text())
+        catalog["species"].append({"id": "demo:wolf", "name": "Wolf",
+                                   "sprite": "demo:pixel"})
+        rules = [
+            {"id": "demo:late", "targetSpecies": "demo:wolf",
+             "automatic": False,
+             "predicates": [{"kind": "minimumLevel", "value": 30}]},
+            {"id": "demo:early", "targetSpecies": "demo:wolf",
+             "automatic": True,
+             "predicates": [{"kind": "minimumLevel", "value": 10}]},
+        ]
+        catalog["species"][0]["evolutions"] = rules
+        write_json(catalog_path, catalog)
+        loaded = load_project(self.root, self.kernel)
+        self.assertEqual(loaded.species[0].evolutions[0].id, "demo:late")
+        canonical_rules = json.loads(loaded.canonical_json)["catalogs"][0]
+        self.assertEqual([rule["id"] for rule in canonical_rules["species"][0]
+                          ["evolutions"]], ["demo:early", "demo:late"])
+        rules.reverse()
+        write_json(catalog_path, catalog)
+        self.assertEqual(loaded.content_hash,
+                         load_project(self.root, self.kernel).content_hash)
+        rules[0]["targetSpecies"] = "demo:missing"
+        write_json(catalog_path, catalog)
+        with self.assertRaises(ContentError) as caught:
+            load_project(self.root, self.kernel)
+        self.assertEqual(caught.exception.diagnostics[0].code, "reference")
+        rules[0]["targetSpecies"] = "demo:wolf"
+        rules[0]["predicates"] = [
+            {"kind": "minimumLevel", "value": 1} for _ in range(5)]
+        write_json(catalog_path, catalog)
+        with self.assertRaises(ContentError) as caught:
+            load_project(self.root, self.kernel)
+        self.assertEqual(caught.exception.diagnostics[0].code, "limit")
+        rules[0]["predicates"] = [
+            {"kind": "minimumLevel", "value": 10},
+            {"kind": "minimumLevel", "value": 20}]
+        write_json(catalog_path, catalog)
+        with self.assertRaises(ContentError) as caught:
+            load_project(self.root, self.kernel)
+        self.assertEqual(caught.exception.diagnostics[0].code, "duplicate")
+
+    def test_encounter_item_rewards_are_bounded_and_resolve(self) -> None:
+        item = {"schemaVersion": "content-0", "id": "demo:ore",
+                "name": "Ore", "buyPrice": 0, "unsellable": True}
+        write_json(self.root / "data/item.json", item)
+        manifest_path = self.root / "manifest.json"
+        manifest = json.loads(manifest_path.read_text())
+        manifest["items"] = ["data/item.json"]
+        write_json(manifest_path, manifest)
+        encounter_path = self.root / "data/encounter.json"
+        encounter = json.loads(encounter_path.read_text())
+        encounter["itemRewards"] = [{"item": "demo:ore", "quantity": 1}]
+        write_json(encounter_path, encounter)
+        loaded = load_project(self.root, self.kernel)
+        self.assertEqual(loaded.encounters[0].item_rewards[0].quantity, 1)
+        encounter["itemRewards"][0]["quantity"] = 10000
+        write_json(encounter_path, encounter)
+        with self.assertRaises(ContentError) as caught:
+            load_project(self.root, self.kernel)
+        self.assertEqual(caught.exception.diagnostics[0].pointer,
+                         "/itemRewards/0/quantity")
+        encounter["itemRewards"][0] = {"item": "demo:missing", "quantity": 1}
+        write_json(encounter_path, encounter)
+        with self.assertRaises(ContentError) as caught:
+            load_project(self.root, self.kernel)
+        self.assertEqual(caught.exception.diagnostics[0].pointer,
+                         "/itemRewards/0/item")
+
     def test_authored_move_timing_accuracy_and_animation_reference(self) -> None:
         move = {"schemaVersion": "content-0", "id": "demo:quick", "name": "Quick",
                 "accuracy": 500, "windup": 0, "recovery": 30, "cooldown": 60,

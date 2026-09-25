@@ -12,6 +12,7 @@ from persistence.battle_replay import (  # noqa: E402
     BattleReplayHeader,
     LEGACY_RULESET_VERSION,
     M6_RULESET_VERSION,
+    M7_RULESET_VERSION,
     RNG_VERSION,
     RULESET_VERSION,
     require_exact_identity,
@@ -33,7 +34,7 @@ class BattleReplayHeaderTests(unittest.TestCase):
 
     def test_canonical_header_preserves_all_identity_fields(self) -> None:
         value = self.header().canonical_value()
-        self.assertEqual(RULESET_VERSION, M6_RULESET_VERSION)
+        self.assertEqual(RULESET_VERSION, M7_RULESET_VERSION)
         self.assertEqual(value["rulesetVersion"], "m3-1")
         self.assertEqual(value["waitTicks"], 60)
         self.assertEqual(value["rng"]["state"], [1, 2, 3, 4])
@@ -58,24 +59,29 @@ class BattleReplayHeaderTests(unittest.TestCase):
             ruleset_version=LEGACY_RULESET_VERSION,
         )
         with self.assertRaisesRegex(
-            BattleReplayError, "expected 'm6-1', actual 'm3-1'"
+            BattleReplayError, "expected 'm7-1', actual 'm3-1'"
         ):
             require_exact_identity(legacy_header, content_digest="a" * 64)
 
     def test_ruleset_mismatch_reports_expected_and_actual(self) -> None:
         with self.assertRaisesRegex(
-            BattleReplayError, "expected 'm6-1', actual 'm3-1'"
+            BattleReplayError, "expected 'm7-1', actual 'm3-1'"
         ):
             require_exact_identity(self.header(), content_digest="a" * 64)
 
-    def test_new_runtime_defaults_to_m6(self) -> None:
-        m6_header = self.header(ruleset_version=RULESET_VERSION)
-        require_exact_identity(m6_header, content_digest="a" * 64)
+    def test_new_runtime_defaults_to_m7(self) -> None:
+        m7_header = self.header(ruleset_version=RULESET_VERSION)
+        require_exact_identity(m7_header, content_digest="a" * 64)
         with self.assertRaisesRegex(
-            BattleReplayError, "expected 'm3-1', actual 'm6-1'"
+            BattleReplayError, "expected 'm3-1', actual 'm7-1'"
         ):
-            require_exact_identity(m6_header, content_digest="a" * 64,
+            require_exact_identity(m7_header, content_digest="a" * 64,
                                    ruleset_version=LEGACY_RULESET_VERSION)
+
+    def test_historical_m6_replay_remains_explicit(self) -> None:
+        historical = self.header(ruleset_version=M6_RULESET_VERSION)
+        require_exact_identity(historical, content_digest="a" * 64,
+                               ruleset_version=M6_RULESET_VERSION)
 
     def test_invalid_wait_rng_and_versions_reject(self) -> None:
         invalid = (

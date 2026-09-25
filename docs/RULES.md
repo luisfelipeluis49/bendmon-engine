@@ -10,7 +10,7 @@ This is the single planning registry; no executable registry exists yet. Every l
 | MIX_SOURCE_COUNT | source moves per mix / count | exact integer | 2 | MIX-2–5 |
 | MIX_RECURSION_ALLOWED | recipe results as sources / boolean | boolean | false | MIX-7 |
 | CUSTOM_CODE_ALLOWED | executable project content / boolean | boolean | false | REF-1, trust boundary |
-| RULESET_VERSION | canonical semantics identity / version | exact version identifier | `m6-1` for new M6 saves/replays; `m3-1` for the first complete headless-battle contract and explicit legacy replays | all save/replay laws; cross-version reinterpretation forbidden |
+| RULESET_VERSION | canonical semantics identity / version | exact version identifier | `m7-1` for new M7 saves/replays; `m6-1` remains an explicit historical identity; `m3-1` for the first complete headless-battle contract remains an explicit historical identity | all save/replay laws; cross-version reinterpretation forbidden |
 | TICK_UNIT / TICK_MAX | timeline unit / ticks | 60 ticks/presentation second; bounded integer deadline | TICK_UNIT = 1/60 presentation second; TICK_MAX = 216000 (one active hour) | TIME-1; overflow and pacing |
 | WAIT_TICKS | duration of explicit Wait / ticks | exactly one of 30, 60, 120 per saved game | player selects at new-game creation; immutable for that game | barrier progress; TIME-1; save/replay header |
 | MIN_WINDUP | command acceptance to execution / ticks | >=0 | 0; current-tick execution queues only after atomic batch commit | scheduler ordering; D03 |
@@ -41,6 +41,7 @@ This is the single planning registry; no executable registry exists yet. Every l
 | MULTI_TYPE_ALLOCATION | component count and power division | 1–4 distinct TypeIds | quotient plus canonical TypeId remainder; per-component modifier/floor then checked sum | D07; M5 |
 | XP_CURVE / STAT_CURVE | progression functions over 1–200 | monotone 200-entry XP table; bounded stats | XP(L)=25×(L−1)^3+75×(L−1); HP=floor((2b+i)L/100)+L+10; other=floor((2b+i)L/100)+5 | PROG-1; U06 |
 | CAPTURE_RULE | capture transaction | one action/item; bounded probability; legal destination required | U07 HP/item/status formula; final clamp 100–9500; atomic party-first then storage success | CAP-1; U07 |
+| CAPTURE_FRACTION_INPUT | exact authored item multiplier components | numerator and denominator each 1–10000; ratio 1/2–4 | checked wide integer products and one final floor | U07; M7 content intake |
 | DEFAULT_CAPACITIES | project defaults | positive bounded integers | party 6; moves 4; storage 1000; item stack 999; inventory entries 512; currency 9999999 | INV-1; D13 |
 | PROJECT_CAPACITY_TIERS | creator-authored monotone capacity levels | at most 16; finite and within engine ceilings | hard max party 12; moves 8; storage 10000; stack 9999; entries 4096; currency 999999999 | U08 explicit creator-authority exception |
 | WORLD_MOVEMENT | authoritative exploration geometry | checked fixed-point coordinates on baked navigation surface | free-direction movement; swept collision; explicit elevation/transition links | D14; M8 |
@@ -61,4 +62,4 @@ Authored values such as permitted move power, species stats, recipe timing and D
 
 ## Content-0 development loader ceilings
 
-Authoritative technical limits for the new inert loader: JSON 1 MiB/file; total loaded bytes 8 MiB; 64 manifest files plus project/manifest; 256 entities per kind; 256 entries/references per record; 4096 total roster entries and 4096 total map references; JSON depth 16; display names 128 characters; normalized ASCII paths 240 characters; map metadata dimensions 1..512; P6 sprite dimensions 1..256; native wire 2 MiB and 140000 tokens. These are resource limits, not RPG balance. Exact schema/payload rules are in CONTENT-0.md. Bend and host boundary tests enforce the same limits; projects cannot supply overrides.
+Authoritative technical limits for the new inert loader: JSON 1 MiB/file; total loaded bytes 8 MiB; 64 manifest files plus project/manifest; 256 entities per kind; 256 entries/references per record; 4096 combined encounter roster entries/item rewards, 4096 combined level-move/evolution entries and 4096 total map references; JSON depth 16; display names 128 characters; normalized ASCII paths 240 characters; map metadata dimensions 1..512; P6 sprite dimensions 1..256; native wire 2 MiB and 140000 tokens. These are resource limits, not RPG balance. Exact schema/payload rules are in CONTENT-0.md. Bend and host boundary tests enforce the same limits; projects cannot supply overrides.

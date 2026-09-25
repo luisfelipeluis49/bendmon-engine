@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "content-0/item.schema.json",
+  "title": "Content-0 item",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "id", "name", "buyPrice"],
+  "properties": {
+    "schemaVersion": {"const": "content-0"},
+    "id": {"type": "string", "pattern": "^[a-z][a-z0-9_-]{0,31}:[a-z][a-z0-9_-]{0,31}$"},
+    "name": {"type": "string", "minLength": 1, "maxLength": 128},
+    "buyPrice": {"type": "integer", "minimum": 0, "maximum": 1000000},
+    "unsellable": {"type": "boolean"},
+    "icon": {"type": "string", "pattern": "^[a-z][a-z0-9_-]{0,31}:[a-z][a-z0-9_-]{0,31}$"},
+    "captureMultiplier": {
+      "$comment": "The loader additionally enforces exact ratio 1/2 <= numerator/denominator <= 4; JSON Schema cannot express this cross-field arithmetic constraint.",
+      "type": "object", "additionalProperties": false,
+      "required": ["numerator", "denominator"],
+      "properties": {
+        "numerator": {"type": "integer", "minimum": 1, "maximum": 10000},
+        "denominator": {"type": "integer", "minimum": 1, "maximum": 10000}
+      }
+    }
+  }
+}

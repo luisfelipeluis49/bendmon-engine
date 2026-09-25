@@ -60,9 +60,9 @@ class ContentIntegrationTests(unittest.TestCase):
         error = self.rejected('kernel-4')
         self.assertEqual(error.diagnostics[0].pointer, '/height')
 
-    def test_level_cap_uses_bend(self):
+    def test_level_cap_is_rejected_at_host_boundary(self):
         self.edit('encounters/glade-edge.json', lambda d: d['entries'][0].update(level=201))
-        error = self.rejected('kernel-3')
+        error = self.rejected('integer')
         self.assertEqual(error.diagnostics[0].pointer, '/entries/0/level')
 
     def test_invalid_json_numeric_and_unicode_forms(self):

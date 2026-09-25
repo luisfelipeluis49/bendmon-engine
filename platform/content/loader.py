@@ -12,11 +12,12 @@ import subprocess
 import tempfile
 from typing import Any, Callable, Iterable
 
-from .models import (Asset, AssetId, Catalog, CatalogId, Encounter,
-                     EncounterEntry, EncounterId, LoadedProject, MapId,
-                     MapRecord, MixRecipe, MixResultDescriptor, MoveId,
+from .models import (Asset, AssetId, CapacityTier, Catalog, CatalogId, Encounter,
+                     EvolutionPredicate, EvolutionRule,
+                     EncounterEntry, EncounterId, ItemReward, LoadedProject, MapId,
+                     MapRecord, ItemId, ItemRecord, LevelMove, MixRecipe, MixResultDescriptor, MoveId,
                      MoveRecord, Project, ProjectId, RecipeId, ResultId, TypeId,
-                     Species, SpeciesId)
+                     ShopId, ShopRecord, Species, SpeciesId, SpeciesProgression)
 
 SCHEMA = "content-0"
 MAX_JSON_BYTES = 1 << 20
@@ -180,6 +181,116 @@ def _uint(value: Any, low: int, high: int, file: str, pointer: str) -> int:
     return value
 
 
+def _species_progression(value: Any, file: str, pointer: str) -> SpeciesProgression:
+    profile = _object(value, {"baseStats", "captureRate", "baseXpYield",
+                              "baseCurrencyYield"}, file, pointer)
+    stats_pointer = pointer + "/baseStats"
+    stats = _object(profile["baseStats"], {"hp", "attack", "defense",
+                                           "specialAttack", "specialDefense",
+                                           "speed"}, file, stats_pointer)
+    def stat(key: str) -> int:
+        return _uint(stats[key], 1, 500, file, stats_pointer + "/" + key)
+    return SpeciesProgression(
+        stat("hp"), stat("attack"), stat("defense"),
+        stat("specialAttack"), stat("specialDefense"), stat("speed"),
+        _uint(profile["captureRate"], 500, 9000, file, pointer + "/captureRate"),
+        _uint(profile["baseXpYield"], 1, 1000, file, pointer + "/baseXpYield"),
+        _uint(profile["baseCurrencyYield"], 0, 100000, file,
+              pointer + "/baseCurrencyYield"),
+    )
+
+
+def _progression_value(profile: SpeciesProgression) -> dict[str, Any]:
+    return {
+        "baseStats": {"hp": profile.base_hp, "attack": profile.base_attack,
+                      "defense": profile.base_defense,
+                      "specialAttack": profile.base_special_attack,
+                      "specialDefense": profile.base_special_defense,
+                      "speed": profile.base_speed},
+        "captureRate": profile.capture_rate,
+        "baseXpYield": profile.base_xp_yield,
+        "baseCurrencyYield": profile.base_currency_yield,
+    }
+
+
+_CAPACITY_FIELDS = (("party", 12), ("moves", 8), ("storage", 10000),
+                    ("itemStack", 9999), ("inventoryEntries", 4096),
+                    ("currency", 999999999))
+
+
+def _capacity_tiers(value: Any) -> tuple[CapacityTier, ...]:
+    rows = _array(value, "project.json", "/capacityTiers", 16)
+    if not rows:
+        _fail("capacity-tier", "project.json", "/capacityTiers", "at least one capacity tier is required")
+    tiers: list[CapacityTier] = []
+    previous: tuple[int, ...] | None = None
+    for index, raw in enumerate(rows):
+        pointer = f"/capacityTiers/{index}"
+        row = _object(raw, {key for key, _ in _CAPACITY_FIELDS}, "project.json", pointer)
+        values = tuple(_uint(row[key], 1, ceiling, "project.json", pointer + "/" + key)
+                       for key, ceiling in _CAPACITY_FIELDS)
+        if previous is not None and any(now < before for now, before in zip(values, previous)):
+            _fail("capacity-tier", "project.json", pointer, "capacity tiers must be monotone")
+        tiers.append(CapacityTier(*values))
+        previous = values
+    return tuple(tiers)
+
+
+def _capacity_value(tier: CapacityTier) -> dict[str, int]:
+    return dict(zip((key for key, _ in _CAPACITY_FIELDS),
+                    (tier.party, tier.moves, tier.storage, tier.item_stack,
+                     tier.inventory_entries, tier.currency)))
+
+
+_EVOLUTION_NUMBERS = {"minimumLevel": (1, 200), "minimumHarmony": (0, 5)}
+_EVOLUTION_IDS = {"requiredItem", "requiredFlag", "timeProfile",
+                  "knownMove", "learnedRecipe"}
+
+
+def _evolutions(value: Any, file: str, pointer: str) -> tuple[EvolutionRule, ...]:
+    rules: list[EvolutionRule] = []
+    for index, raw in enumerate(_array(value, file, pointer)):
+        rule_pointer = f"{pointer}/{index}"
+        row = _object(raw, {"id", "targetSpecies", "automatic", "predicates"},
+                      file, rule_pointer)
+        rule_id = _id(row["id"], file, rule_pointer + "/id")
+        target = SpeciesId(_id(row["targetSpecies"], file,
+                               rule_pointer + "/targetSpecies"))
+        if type(row["automatic"]) is not bool:
+            _fail("boolean", file, rule_pointer + "/automatic",
+                  "automatic must be boolean", rule_id)
+        predicates: list[EvolutionPredicate] = []
+        for j, raw_predicate in enumerate(_array(row["predicates"], file,
+                                                 rule_pointer + "/predicates", 4)):
+            pred_pointer = rule_pointer + f"/predicates/{j}"
+            predicate = _object(raw_predicate, {"kind", "value"}, file, pred_pointer)
+            kind = predicate["kind"]
+            if type(kind) is not str or kind not in _EVOLUTION_NUMBERS.keys() | _EVOLUTION_IDS:
+                _fail("evolution-predicate", file, pred_pointer + "/kind",
+                      "unknown evolution predicate", rule_id)
+            if kind in _EVOLUTION_NUMBERS:
+                low, high = _EVOLUTION_NUMBERS[kind]
+                pred_value: int | str = _uint(predicate["value"], low, high,
+                                              file, pred_pointer + "/value")
+            else:
+                pred_value = _id(predicate["value"], file, pred_pointer + "/value")
+            predicates.append(EvolutionPredicate(kind, pred_value))
+        if len({predicate.kind for predicate in predicates}) != len(predicates):
+            _fail("duplicate", file, rule_pointer + "/predicates",
+                  "duplicate evolution predicate kind", rule_id)
+        rules.append(EvolutionRule(rule_id, target, row["automatic"],
+                                   tuple(predicates)))
+    _unique([rule.id for rule in rules], file, pointer, "evolution rule ID")
+    return tuple(rules)
+
+
+def _evolution_value(rule: EvolutionRule) -> dict[str, Any]:
+    return {"id": rule.id, "targetSpecies": str(rule.target_species),
+            "automatic": rule.automatic,
+            "predicates": [{"kind": predicate.kind, "value": predicate.value}
+                           for predicate in rule.predicates]}
+
+
 class _Root:
     def __init__(self, path: os.PathLike[str] | str):
         absolute = os.path.abspath(os.fspath(path))
@@ -324,23 +435,26 @@ def _kernel(tokens: list[int], kernel_path: os.PathLike[str] | str,
 def load_project(path: os.PathLike[str] | str, kernel_path: os.PathLike[str] | str | None = None) -> LoadedProject:
     root = _Root(path)
     try:
-        p = _object(_doc(root, "project.json"), {"schemaVersion", "id", "name", "ruleset", "entryMap"}, "project.json", "")
+        p = _object(_doc(root, "project.json"), {"schemaVersion", "id", "name", "ruleset", "entryMap"}, "project.json", "", {"capacityTiers"})
         if p["ruleset"] != "unassigned":
             _fail("ruleset", "project.json", "/ruleset", 'ruleset must be "unassigned"')
+        capacity_tiers = _capacity_tiers(p["capacityTiers"]) if "capacityTiers" in p else ()
         project = Project(ProjectId(_id(p["id"], "project.json", "/id")), _string(p["name"], "project.json", "/name"),
-                          "unassigned", MapId(_id(p["entryMap"], "project.json", "/entryMap")))
-        m = _object(_doc(root, "manifest.json"), {"schemaVersion", "catalogs", "maps", "encounters", "assets"}, "manifest.json", "", {"moves", "mixRecipes", "mixResults"})
+                          "unassigned", MapId(_id(p["entryMap"], "project.json", "/entryMap")), capacity_tiers)
+        m = _object(_doc(root, "manifest.json"), {"schemaVersion", "catalogs", "maps", "encounters", "assets"}, "manifest.json", "", {"moves", "mixRecipes", "mixResults", "items", "shops"})
         catalog_paths = [_valid_path(v, ".json", "manifest.json", f"/catalogs/{i}") for i, v in enumerate(_array(m["catalogs"], "manifest.json", "/catalogs"))]
         map_paths = [_valid_path(v, ".json", "manifest.json", f"/maps/{i}") for i, v in enumerate(_array(m["maps"], "manifest.json", "/maps"))]
         encounter_paths = [_valid_path(v, ".json", "manifest.json", f"/encounters/{i}") for i, v in enumerate(_array(m["encounters"], "manifest.json", "/encounters"))]
         move_paths = [_valid_path(v, ".json", "manifest.json", f"/moves/{i}") for i, v in enumerate(_array(m.get("moves", []), "manifest.json", "/moves"))]
         recipe_paths = [_valid_path(v, ".json", "manifest.json", f"/mixRecipes/{i}") for i, v in enumerate(_array(m.get("mixRecipes", []), "manifest.json", "/mixRecipes"))]
         result_paths = [_valid_path(v, ".json", "manifest.json", f"/mixResults/{i}") for i, v in enumerate(_array(m.get("mixResults", []), "manifest.json", "/mixResults"))]
-        all_docs = catalog_paths + map_paths + encounter_paths + move_paths + recipe_paths + result_paths
+        item_paths = [_valid_path(v, ".json", "manifest.json", f"/items/{i}") for i, v in enumerate(_array(m.get("items", []), "manifest.json", "/items"))]
+        shop_paths = [_valid_path(v, ".json", "manifest.json", f"/shops/{i}") for i, v in enumerate(_array(m.get("shops", []), "manifest.json", "/shops"))]
+        all_docs = catalog_paths + map_paths + encounter_paths + move_paths + recipe_paths + result_paths + item_paths + shop_paths
         if len(all_docs) > MAX_FILES:
             _fail("file-count", "manifest.json", "", "manifest references more than 64 files")
         _unique(all_docs, "manifest.json", "", "manifest path")
-        catalog_paths.sort(); map_paths.sort(); encounter_paths.sort(); move_paths.sort(); recipe_paths.sort(); result_paths.sort()
+        catalog_paths.sort(); map_paths.sort(); encounter_paths.sort(); move_paths.sort(); recipe_paths.sort(); result_paths.sort(); item_paths.sort(); shop_paths.sort()
         assets: list[Asset] = []
         asset_values = _array(m["assets"], "manifest.json", "/assets")
         for i, raw_asset in enumerate(asset_values):
@@ -365,6 +479,53 @@ def load_project(path: os.PathLike[str] | str, kernel_path: os.PathLike[str] | s
             _parse_ppm(body, asset.path)
 
         assets_by_id = {str(a.id) for a in assets}
+        items: list[ItemRecord] = []
+        for rel in item_paths:
+            d = _object(_doc(root, rel), {"schemaVersion", "id", "name", "buyPrice"},
+                        rel, "", {"unsellable", "captureMultiplier", "icon"})
+            iid = ItemId(_id(d["id"], rel, "/id"))
+            name = _string(d["name"], rel, "/name")
+            price = _uint(d["buyPrice"], 0, 1000000, rel, "/buyPrice")
+            unsellable = d.get("unsellable", False)
+            if type(unsellable) is not bool:
+                _fail("boolean", rel, "/unsellable", "unsellable must be boolean", iid)
+            numerator = denominator = None
+            if "captureMultiplier" in d:
+                value = _object(d["captureMultiplier"], {"numerator", "denominator"},
+                                rel, "/captureMultiplier")
+                numerator = _uint(value["numerator"], 1, 10000, rel,
+                                  "/captureMultiplier/numerator")
+                denominator = _uint(value["denominator"], 1, 10000, rel,
+                                    "/captureMultiplier/denominator")
+                if numerator * 2 < denominator or numerator > denominator * 4:
+                    _fail("capture-multiplier", rel, "/captureMultiplier",
+                          "capture multiplier must be between 1/2 and 4", iid)
+            icon = AssetId(_id(d["icon"], rel, "/icon")) if "icon" in d else None
+            if icon is not None and str(icon) not in assets_by_id:
+                _fail("reference", rel, "/icon", "item icon asset does not resolve", iid)
+            items.append(ItemRecord(iid, name, price, unsellable, numerator,
+                                    denominator, icon))
+        if len(items) > MAX_ENTITIES:
+            _fail("entity-limit", "manifest.json", "/items", "more than 256 items")
+        _unique([str(v.id) for v in items], "manifest.json", "/items", "item ID")
+        items.sort(key=lambda v: str(v.id))
+        item_ids = {str(item.id) for item in items}
+        shops: list[ShopRecord] = []
+        for rel in shop_paths:
+            d = _object(_doc(root, rel), {"schemaVersion", "id", "name", "items"}, rel, "")
+            sid = ShopId(_id(d["id"], rel, "/id"))
+            name = _string(d["name"], rel, "/name")
+            offered = tuple(ItemId(_id(raw, rel, f"/items/{i}")) for i, raw in
+                            enumerate(_array(d["items"], rel, "/items")))
+            _unique([str(value) for value in offered], rel, "/items", "shop item")
+            for i, item_id in enumerate(offered):
+                if str(item_id) not in item_ids:
+                    _fail("reference", rel, f"/items/{i}", "shop item does not resolve", sid)
+            shops.append(ShopRecord(sid, name, offered))
+        if len(shops) > MAX_ENTITIES:
+            _fail("entity-limit", "manifest.json", "/shops", "more than 256 shops")
+        _unique([str(v.id) for v in shops], "manifest.json", "/shops", "shop ID")
+        shops.sort(key=lambda v: str(v.id))
         moves: list[MoveRecord] = []
         for rel in move_paths:
             raw_move = _doc(root, rel)
@@ -473,28 +634,97 @@ def load_project(path: os.PathLike[str] | str, kernel_path: os.PathLike[str] | s
             d = _object(_doc(root, rel), {"schemaVersion", "id", "species"}, rel, "")
             ss: list[Species] = []
             for i, raw in enumerate(_array(d["species"], rel, "/species")):
-                s = _object(raw, {"id", "name", "sprite"}, rel, f"/species/{i}")
-                record = Species(SpeciesId(_id(s["id"], rel, f"/species/{i}/id")), _string(s["name"], rel, f"/species/{i}/name"), AssetId(_id(s["sprite"], rel, f"/species/{i}/sprite")))
+                pointer = f"/species/{i}"
+                s = _object(raw, {"id", "name", "sprite"}, rel, pointer,
+                            {"progression", "levelMoves", "evolutions"})
+                progression = (_species_progression(s["progression"], rel,
+                                                    pointer + "/progression")
+                               if "progression" in s else None)
+                level_moves: list[LevelMove] = []
+                for j, raw_level_move in enumerate(_array(s.get("levelMoves", []),
+                                                          rel, pointer + "/levelMoves")):
+                    move_pointer = pointer + f"/levelMoves/{j}"
+                    entry = _object(raw_level_move, {"level", "move"}, rel, move_pointer)
+                    level = _uint(entry["level"], 1, 200, rel, move_pointer + "/level")
+                    move = MoveId(_id(entry["move"], rel, move_pointer + "/move"))
+                    if str(move) not in {str(record.id) for record in moves}:
+                        _fail("reference", rel, move_pointer + "/move",
+                              "level-up move does not resolve", s.get("id"))
+                    level_moves.append(LevelMove(level, move))
+                _unique([f"{entry.level}:{entry.move}" for entry in level_moves],
+                        rel, pointer + "/levelMoves", "level-up move entry")
+                level_moves.sort(key=lambda entry: (entry.level, str(entry.move)))
+                evolutions = _evolutions(s.get("evolutions", []), rel,
+                                         pointer + "/evolutions")
+                record = Species(
+                    SpeciesId(_id(s["id"], rel, pointer + "/id")),
+                    _string(s["name"], rel, pointer + "/name"),
+                    AssetId(_id(s["sprite"], rel, pointer + "/sprite")),
+                    progression,
+                    tuple(level_moves),
+                    evolutions,
+                )
                 ss.append(record); species_locations.append((record, rel, i))
             ss.sort(key=lambda value: str(value.id))
             catalogs.append(Catalog(CatalogId(_id(d["id"], rel, "/id")), tuple(ss)))
         if len(species_locations) > MAX_ENTITIES:
             _fail("entity-limit", "manifest.json", "/catalogs", "more than 256 species")
+        if sum(len(species.level_moves) + len(species.evolutions)
+               for species, _, _ in species_locations) > MAX_TOTAL_REFS:
+            _fail("reference-limit", "manifest.json", "/catalogs",
+                  "more than 4096 level-move and evolution entries")
         _unique([str(c.id) for c in catalogs], "manifest.json", "/catalogs", "catalog ID")
         _unique([str(s.id) for s, _, _ in species_locations], "manifest.json", "/catalogs", "species ID")
+        species_ids = {str(s.id) for s, _, _ in species_locations}
+        recipe_ids = {str(recipe.id) for recipe in mix_recipes}
+        move_ids = {str(move.id) for move in moves}
+        all_rule_ids: list[str] = []
+        for species, rel, position in species_locations:
+            for rule_index, rule in enumerate(species.evolutions):
+                all_rule_ids.append(rule.id)
+                pointer = f"/species/{position}/evolutions/{rule_index}"
+                if str(rule.target_species) not in species_ids:
+                    _fail("reference", rel, pointer + "/targetSpecies",
+                          "evolution target species does not resolve", rule.id)
+                for predicate_index, predicate in enumerate(rule.predicates):
+                    reference_set = {"requiredItem": item_ids, "knownMove": move_ids,
+                                     "learnedRecipe": recipe_ids}.get(predicate.kind)
+                    if reference_set is not None and predicate.value not in reference_set:
+                        _fail("reference", rel,
+                              pointer + f"/predicates/{predicate_index}/value",
+                              "evolution predicate reference does not resolve",
+                              rule.id)
+        _unique(all_rule_ids, "manifest.json", "/catalogs", "evolution rule ID")
 
         encounters_loc: list[tuple[Encounter, str]] = []
         total_entries = 0
         for rel in encounter_paths:
-            d = _object(_doc(root, rel), {"schemaVersion", "id", "entries"}, rel, "")
+            d = _object(_doc(root, rel), {"schemaVersion", "id", "entries"},
+                        rel, "", {"itemRewards"})
             entries: list[EncounterEntry] = []
             for i, raw in enumerate(_array(d["entries"], rel, "/entries")):
                 e = _object(raw, {"species", "level"}, rel, f"/entries/{i}")
-                entries.append(EncounterEntry(SpeciesId(_id(e["species"], rel, f"/entries/{i}/species")), _uint(e["level"], 0, 2**32 - 1, rel, f"/entries/{i}/level")))
-            total_entries += len(entries)
-            encounters_loc.append((Encounter(EncounterId(_id(d["id"], rel, "/id")), tuple(entries)), rel))
+                entries.append(EncounterEntry(SpeciesId(_id(e["species"], rel, f"/entries/{i}/species")), _uint(e["level"], 1, 200, rel, f"/entries/{i}/level")))
+            item_rewards: list[ItemReward] = []
+            for i, raw in enumerate(_array(d.get("itemRewards", []), rel,
+                                            "/itemRewards")):
+                pointer = f"/itemRewards/{i}"
+                reward = _object(raw, {"item", "quantity"}, rel, pointer)
+                item = ItemId(_id(reward["item"], rel, pointer + "/item"))
+                if str(item) not in item_ids:
+                    _fail("reference", rel, pointer + "/item",
+                          "reward item does not resolve", str(d["id"]))
+                quantity = _uint(reward["quantity"], 1, 9999, rel,
+                                 pointer + "/quantity")
+                item_rewards.append(ItemReward(item, quantity))
+            _unique([str(value.item) for value in item_rewards], rel,
+                    "/itemRewards", "reward item")
+            total_entries += len(entries) + len(item_rewards)
+            encounters_loc.append((Encounter(EncounterId(_id(d["id"], rel, "/id")),
+                                             tuple(entries), tuple(item_rewards)), rel))
         if total_entries > MAX_TOTAL_REFS:
-            _fail("reference-limit", "manifest.json", "/encounters", "more than 4096 encounter entries")
+            _fail("reference-limit", "manifest.json", "/encounters",
+                  "more than 4096 encounter entries and item rewards")
         _unique([str(e.id) for e, _ in encounters_loc], "manifest.json", "/encounters", "encounter ID")
 
         maps_loc: list[tuple[MapRecord, str]] = []
@@ -530,9 +760,22 @@ def load_project(path: os.PathLike[str] | str, kernel_path: os.PathLike[str] | s
         _kernel(tokens, kernel_path or Path(__file__).resolve().parents[2] / "build/content-kernel",
                 species_locations, encounters_loc, maps_loc, project)
 
-        canonical = {"project": p, "assets": [dict(id=str(a.id), path=a.path, mediaType=a.media_type, bytes=a.bytes, sha256=a.sha256) for a in assets],
-                     "catalogs": [{"schemaVersion": SCHEMA, "id": str(c.id), "species": [{"id": str(s.id), "name": s.name, "sprite": str(s.sprite)} for s in sorted(c.species, key=lambda x: str(x.id))]} for c in catalogs],
-                     "encounters": [{"schemaVersion": SCHEMA, "id": str(e.id), "entries": [{"species": str(x.species), "level": x.level} for x in e.entries]} for e, _ in encounters_loc],
+        canonical_project = dict(p)
+        if capacity_tiers:
+            canonical_project["capacityTiers"] = [_capacity_value(t) for t in capacity_tiers]
+        canonical = {"project": canonical_project, "assets": [dict(id=str(a.id), path=a.path, mediaType=a.media_type, bytes=a.bytes, sha256=a.sha256) for a in assets],
+                     "catalogs": [{"schemaVersion": SCHEMA, "id": str(c.id), "species": [{"id": str(s.id), "name": s.name, "sprite": str(s.sprite),
+                          **({"progression": _progression_value(s.progression)} if s.progression is not None else {}),
+                          **({"levelMoves": [{"level": entry.level, "move": str(entry.move)}
+                                              for entry in s.level_moves]} if s.level_moves else {}),
+                          **({"evolutions": [_evolution_value(rule) for rule in
+                                             sorted(s.evolutions, key=lambda rule: rule.id)]}
+                             if s.evolutions else {})}
+                         for s in sorted(c.species, key=lambda x: str(x.id))]} for c in catalogs],
+                     "encounters": [{"schemaVersion": SCHEMA, "id": str(e.id), "entries": [{"species": str(x.species), "level": x.level} for x in e.entries],
+                                     **({"itemRewards": [{"item": str(x.item), "quantity": x.quantity}
+                                                        for x in e.item_rewards]}
+                                        if e.item_rewards else {})} for e, _ in encounters_loc],
                      "maps": [{"schemaVersion": SCHEMA, "id": str(v.id), "name": v.name, "width": v.width, "height": v.height, "encounters": list(v.encounters)} for v, _ in maps_loc]}
         if moves:
             canonical["moves"] = [{"schemaVersion": SCHEMA, "id": str(v.id), "name": v.name,
@@ -553,10 +796,23 @@ def load_project(path: os.PathLike[str] | str, kernel_path: os.PathLike[str] | s
                                         "sourceA": sorted((str(v.source_a), str(v.source_b)))[0],
                                         "sourceB": sorted((str(v.source_a), str(v.source_b)))[1],
                                         "result": str(v.result)} for v in mix_recipes]
+        if items:
+            canonical["items"] = [{"schemaVersion": SCHEMA, "id": str(v.id),
+                                    "name": v.name, "buyPrice": v.buy_price,
+                                    **({"unsellable": True} if v.unsellable else {}),
+                                    **({"captureMultiplier": {"numerator": v.capture_multiplier_numerator,
+                                                                "denominator": v.capture_multiplier_denominator}}
+                                       if v.capture_multiplier_numerator is not None else {}),
+                                    **({"icon": str(v.icon)} if v.icon is not None else {})}
+                                   for v in items]
+        if shops:
+            canonical["shops"] = [{"schemaVersion": SCHEMA, "id": v.id,
+                                   "name": v.name, "items": [str(item) for item in v.items]}
+                                  for v in shops]
         canonical_bytes = json.dumps(canonical, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
         return LoadedProject(project, tuple(assets), tuple(catalogs), tuple(v[0] for v in species_locations),
                              tuple(v[0] for v in encounters_loc), tuple(v[0] for v in maps_loc), tuple(moves),
-                             tuple(mix_recipes), tuple(mix_results), canonical_bytes,
+                             tuple(mix_recipes), tuple(mix_results), tuple(items), tuple(shops), canonical_bytes,
                              hashlib.sha256(canonical_bytes).hexdigest())
     finally:
         root.close()

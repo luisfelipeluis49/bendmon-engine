@@ -1,6 +1,7 @@
 # M7 progression, capture and economy work orders
 
-Status: implementation in progress. This package is the M7 contract under
+Status: implemented locally; hosted verification is linked in
+`docs/architecture/M7-PROGRESS.md`. This package is the M7 contract under
 approved D11–D13 and U06–U08 in `docs/DECISIONS.md`, with constants in
 `docs/RULES.md`. M6 remains the verified baseline. New semantics use an exact
 `m7-1` ruleset identity when M7 lands; existing `m6-1` replays retain theirs.

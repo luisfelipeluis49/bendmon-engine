@@ -1,6 +1,6 @@
 # M7 progression, capture and economy status
 
-Status: implemented and verified locally; hosted Ubuntu verification pending.
+Status: implemented and verified locally; hosted Ubuntu verification is linked below.
 M6 is the verified baseline at master commit `41a4744`. The controlling M7
 contract is `docs/work-orders/M7-PROGRESSION-CAPTURE-ECONOMY.md`, using the
 approved D11–D13 and U06–U08 decisions.
@@ -49,7 +49,8 @@ source species and catalog identity defects; those are fixed under the trusted
 host binder contract. Host-to-Bend process wiring and visual play remain later
 integration work; M7's production path is the headless Bend playable entry.
 
-The remaining M7 exit tasks are: run `PROOF.bend` again immediately before
-commit; push the verified commit to master; and confirm the hosted Ubuntu run.
-Visual editing, world UI and save installation remain later milestones outside
-M7.
+The M7 implementation was committed as `3cbc7c140f04c42e5140dab7e6578bb77781797b`
+and pushed to master. Its [hosted Ubuntu verification run](https://github.com/luisfelipeluis49/bendmon-engine/actions/runs/36091110410)
+records the corresponding GitHub Actions result. The remaining exit check is
+to confirm that run and the final master documentation update. Visual editing,
+world UI and save installation remain later milestones outside M7.

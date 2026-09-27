@@ -8,6 +8,7 @@
     "x": {"type": "integer", "minimum": -524288, "maximum": 524288},
     "y": {"type": "integer", "minimum": -524288, "maximum": 524288},
     "z": {"type": "integer", "minimum": -524288, "maximum": 524288},
-    "event": {"$ref": "../map.schema.json#/$defs/id"}
+    "event": {"$ref": "../map.schema.json#/$defs/id"},
+    "sprite": {"$ref": "../map.schema.json#/$defs/id"}
   }
 }

@@ -10,6 +10,8 @@ import re
 import stat
 import subprocess
 import tempfile
+import struct
+import zlib
 from typing import Any, Callable, Iterable
 
 from .world import (WorldRecordError, parse_world_content,
@@ -18,7 +20,7 @@ from .world_limits import (MAX_DEPTH, MAX_ENTITIES, MAX_FILES, MAX_JSON_BYTES,
                            MAX_PATH, MAX_PER_RECORD, MAX_TOTAL_BYTES,
                            MAX_TOTAL_REFS, MAX_WIRE_BYTES, MAX_WIRE_TOKENS)
 
-from .models import (Asset, AssetId, CapacityTier, Catalog, CatalogId, Encounter,
+from .models import (Asset, AssetId, AudioBinding, CameraProfile, CapacityTier, Catalog, CatalogId, Encounter,
                      EvolutionPredicate, EvolutionRule,
                      EncounterEntry, EncounterId, ItemReward, LoadedProject, MapId,
                      MapRecord, ItemId, ItemRecord, LevelMove, MixRecipe, MixResultDescriptor, MoveId,
@@ -370,6 +372,81 @@ def _parse_ppm(raw: bytes, file: str) -> None:
         _fail("ppm", file, "", "PPM dimensions or pixel byte count is invalid")
 
 
+def _parse_png(raw: bytes, file: str) -> None:
+    if not raw.startswith(b"\x89PNG\r\n\x1a\n"):
+        _fail("png", file, "", "invalid PNG signature")
+    pos, header, compressed, ended, idat_closed = 8, None, bytearray(), False, False
+    while pos < len(raw):
+        if len(raw) - pos < 12:
+            _fail("png", file, "", "truncated PNG chunk")
+        size = int.from_bytes(raw[pos:pos + 4], "big")
+        kind = raw[pos + 4:pos + 8]
+        end = pos + 12 + size
+        if size > MAX_TOTAL_BYTES or end > len(raw):
+            _fail("png", file, "", "PNG chunk exceeds bounded asset")
+        body = raw[pos + 8:pos + 8 + size]
+        crc = int.from_bytes(raw[pos + 8 + size:end], "big")
+        if zlib.crc32(kind + body) & 0xffffffff != crc:
+            _fail("png", file, "", "PNG chunk checksum mismatch")
+        if kind == b"IHDR":
+            if header is not None or size != 13:
+                _fail("png", file, "", "PNG must contain one valid IHDR")
+            header = struct.unpack(">IIBBBBB", body)
+            width, height, depth, color, comp, filt, interlace = header
+            if not (1 <= width <= 256 and 1 <= height <= 256 and depth == 8 and color == 6 and comp == filt == interlace == 0):
+                _fail("png", file, "", "PNG must be bounded non-interlaced RGBA8")
+        elif kind == b"IDAT":
+            if header is None or ended or idat_closed or len(compressed) + size > MAX_TOTAL_BYTES:
+                _fail("png", file, "", "invalid or excessive PNG image data")
+            compressed.extend(body)
+        elif kind == b"IEND":
+            if size or header is None:
+                _fail("png", file, "", "invalid PNG end chunk")
+            ended = True
+            pos = end
+            break
+        else:
+            _fail("png", file, "", "unsupported PNG chunk")
+        if header is not None and kind not in (b"IHDR", b"IDAT", b"IEND"):
+            idat_closed = True
+        pos = end
+    if not ended or pos != len(raw) or header is None or not compressed:
+        _fail("png", file, "", "PNG is incomplete or has trailing bytes")
+    expected = header[1] * (1 + header[0] * 4)
+    try:
+        decoder = zlib.decompressobj()
+        pixels = decoder.decompress(bytes(compressed), expected + 1)
+    except zlib.error:
+        _fail("png", file, "", "PNG image data is invalid")
+    if len(pixels) != expected or not decoder.eof or decoder.unused_data or decoder.unconsumed_tail or any(pixels[i] > 4 for i in range(0, expected, header[0] * 4 + 1)):
+        _fail("png", file, "", "PNG decoded rows exceed or violate RGBA8 bounds")
+
+
+def _parse_wav(raw: bytes, file: str) -> None:
+    if len(raw) < 44 or raw[:4] != b"RIFF" or raw[8:12] != b"WAVE" or int.from_bytes(raw[4:8], "little") + 8 != len(raw):
+        _fail("wav", file, "", "invalid bounded RIFF/WAVE file")
+    pos, fmt, data = 12, None, None
+    while pos + 8 <= len(raw):
+        kind, size = raw[pos:pos + 4], int.from_bytes(raw[pos + 4:pos + 8], "little")
+        end = pos + 8 + size
+        if end > len(raw): _fail("wav", file, "", "truncated WAV chunk")
+        body = raw[pos + 8:end]
+        if kind == b"fmt ":
+            if fmt is not None or size != 16: _fail("wav", file, "", "WAV requires one PCM format chunk")
+            fmt = struct.unpack("<HHIIHH", body)
+        elif kind == b"data":
+            if data is not None: _fail("wav", file, "", "WAV requires one data chunk")
+            data = body
+        else:
+            _fail("wav", file, "", "unsupported WAV chunk")
+        pos = end + (size & 1)
+    if pos != len(raw) or fmt is None or data is None:
+        _fail("wav", file, "", "WAV is incomplete")
+    code, channels, rate, byte_rate, align, bits = fmt
+    if code != 1 or channels not in (1, 2) or rate not in (22050, 44100) or bits != 16 or align != channels * 2 or byte_rate != rate * align or len(data) % align or len(data) > rate * align * 10:
+        _fail("wav", file, "", "WAV must be mono/stereo 16-bit PCM at 22050/44100 Hz and <=10 seconds")
+
+
 def _kernel(tokens: list[int], kernel_path: os.PathLike[str] | str,
             species: list[tuple[Species, str, int]], encounters: list[tuple[Encounter, str]],
             maps: list[tuple[MapRecord, str]], project: Project) -> None:
@@ -439,7 +516,7 @@ def load_project(path: os.PathLike[str] | str, kernel_path: os.PathLike[str] | s
         capacity_tiers = _capacity_tiers(p["capacityTiers"]) if "capacityTiers" in p else ()
         project = Project(ProjectId(_id(p["id"], "project.json", "/id")), _string(p["name"], "project.json", "/name"),
                           "unassigned", MapId(_id(p["entryMap"], "project.json", "/entryMap")), capacity_tiers)
-        m = _object(_doc(root, "manifest.json"), {"schemaVersion", "catalogs", "maps", "encounters", "assets"}, "manifest.json", "", {"moves", "mixRecipes", "mixResults", "items", "shops", "events"})
+        m = _object(_doc(root, "manifest.json"), {"schemaVersion", "catalogs", "maps", "encounters", "assets"}, "manifest.json", "", {"moves", "mixRecipes", "mixResults", "items", "shops", "events", "cameraProfiles", "audioBindings"})
         catalog_paths = [_valid_path(v, ".json", "manifest.json", f"/catalogs/{i}") for i, v in enumerate(_array(m["catalogs"], "manifest.json", "/catalogs"))]
         map_paths = [_valid_path(v, ".json", "manifest.json", f"/maps/{i}") for i, v in enumerate(_array(m["maps"], "manifest.json", "/maps"))]
         encounter_paths = [_valid_path(v, ".json", "manifest.json", f"/encounters/{i}") for i, v in enumerate(_array(m["encounters"], "manifest.json", "/encounters"))]
@@ -459,9 +536,10 @@ def load_project(path: os.PathLike[str] | str, kernel_path: os.PathLike[str] | s
         for i, raw_asset in enumerate(asset_values):
             a = _object(raw_asset, {"id", "path", "mediaType", "bytes", "sha256"}, "manifest.json", f"/assets/{i}")
             aid = AssetId(_id(a["id"], "manifest.json", f"/assets/{i}/id"))
-            apath = _valid_path(a["path"], ".ppm", "manifest.json", f"/assets/{i}/path")
-            if a["mediaType"] != "image/x-portable-pixmap":
+            asset_suffix = {"image/x-portable-pixmap": ".ppm", "image/png": ".png", "audio/wav": ".wav"}.get(a["mediaType"])
+            if asset_suffix is None:
                 _fail("media-type", "manifest.json", f"/assets/{i}/mediaType", "unsupported media type", aid)
+            apath = _valid_path(a["path"], asset_suffix, "manifest.json", f"/assets/{i}/path")
             size = _uint(a["bytes"], 0, MAX_TOTAL_BYTES, "manifest.json", f"/assets/{i}/bytes")
             digest = a["sha256"]
             if not isinstance(digest, str) or not SHA_RE.fullmatch(digest):
@@ -475,7 +553,36 @@ def load_project(path: os.PathLike[str] | str, kernel_path: os.PathLike[str] | s
             body = root.read(asset.path, min(asset.bytes, MAX_TOTAL_BYTES) if asset.bytes else 0)
             if len(body) != asset.bytes or hashlib.sha256(body).hexdigest() != asset.sha256:
                 _fail("asset-integrity", asset.path, "", "asset byte size or SHA-256 does not match manifest", asset.id)
-            _parse_ppm(body, asset.path)
+            if asset.media_type == "image/x-portable-pixmap": _parse_ppm(body, asset.path)
+            elif asset.media_type == "image/png": _parse_png(body, asset.path)
+            else: _parse_wav(body, asset.path)
+
+        camera_profiles: list[CameraProfile] = []
+        for i, value in enumerate(_array(m.get("cameraProfiles", []), "manifest.json", "/cameraProfiles")):
+            ptr = f"/cameraProfiles/{i}"
+            row = _object(value, {"id", "fovDegrees", "nearQ10", "farQ10"}, "manifest.json", ptr)
+            profile_id = _id(row["id"], "manifest.json", ptr + "/id")
+            fov = _uint(row["fovDegrees"], 30, 90, "manifest.json", ptr + "/fovDegrees")
+            near = _uint(row["nearQ10"], 1, 524287, "manifest.json", ptr + "/nearQ10")
+            far = _uint(row["farQ10"], near + 1, 524288, "manifest.json", ptr + "/farQ10")
+            camera_profiles.append(CameraProfile(profile_id, fov, near, far))
+        _unique([v.id for v in camera_profiles], "manifest.json", "/cameraProfiles", "camera profile ID")
+        if len(camera_profiles) > MAX_ENTITIES:
+            _fail("entity-limit", "manifest.json", "/cameraProfiles", "more than 256 camera profiles")
+        audio_bindings: list[AudioBinding] = []
+        for i, value in enumerate(_array(m.get("audioBindings", []), "manifest.json", "/audioBindings")):
+            ptr = f"/audioBindings/{i}"
+            row = _object(value, {"signalKind", "asset"}, "manifest.json", ptr)
+            signal_kind = _uint(row["signalKind"], 0, 999_999_999, "manifest.json", ptr + "/signalKind")
+            asset_id = AssetId(_id(row["asset"], "manifest.json", ptr + "/asset"))
+            target = {str(item.id): item for item in assets}.get(str(asset_id))
+            if target is None or target.media_type != "audio/wav":
+                _fail("reference", "manifest.json", ptr + "/asset", "audio binding must reference a WAV asset", asset_id)
+            audio_bindings.append(AudioBinding(signal_kind, asset_id))
+        _unique([str(v.signal_kind) for v in audio_bindings], "manifest.json", "/audioBindings", "audio signal kind")
+        if len(audio_bindings) > MAX_ENTITIES:
+            _fail("entity-limit", "manifest.json", "/audioBindings", "more than 256 audio bindings")
+        audio_bindings.sort(key=lambda item: item.signal_kind)
 
         assets_by_id = {str(a.id) for a in assets}
         items: list[ItemRecord] = []
@@ -756,6 +863,32 @@ def load_project(path: os.PathLike[str] | str, kernel_path: os.PathLike[str] | s
 
         event_locations, maps_loc = parse_world_content(
             root, map_paths, event_paths)
+        profile_ids = {v.id for v in camera_profiles}
+        asset_by_id = {str(v.id): v for v in assets}
+        for map_record, rel in maps_loc:
+            presentation = map_record.presentation
+            if presentation.camera_profile is not None and presentation.camera_profile not in profile_ids:
+                _fail("reference", rel, "/presentation/cameraProfile", "camera profile does not resolve", map_record.id)
+            if presentation.background is not None:
+                background = asset_by_id.get(str(presentation.background))
+                if background is None or not background.media_type.startswith("image/"):
+                    _fail("reference", rel, "/presentation/background", "background must resolve to an image asset", map_record.id)
+            for npc in map_record.npcs:
+                if npc.sprite is not None:
+                    sprite = asset_by_id.get(str(npc.sprite))
+                    if sprite is None or not sprite.media_type.startswith("image/"):
+                        _fail("reference", rel, "/npcs", "NPC sprite must resolve to an image asset", npc.id)
+        for species, rel, position in species_locations:
+            sprite = asset_by_id.get(str(species.sprite))
+            if sprite is not None and not sprite.media_type.startswith("image/"):
+                _fail("reference", rel, f"/species/{position}/sprite", "species sprite must resolve to an image asset", species.id)
+        for item in items:
+            if item.icon is not None and not asset_by_id[str(item.icon)].media_type.startswith("image/"):
+                _fail("reference", "manifest.json", "/assets", "item icon must reference an image asset", item.id)
+        for record in (*moves, *mix_results):
+            animation_asset = asset_by_id[str(record.animation)]
+            if not animation_asset.media_type.startswith("image/"):
+                _fail("reference", "manifest.json", "/assets", "animation must reference an image asset", record.id)
 
         assets.sort(key=lambda v: str(v.id)); catalogs.sort(key=lambda v: str(v.id)); species_locations.sort(key=lambda v: str(v[0].id)); encounters_loc.sort(key=lambda v: str(v[0].id)); maps_loc.sort(key=lambda v: str(v[0].id))
         asset_index = {str(v.id): i for i, v in enumerate(assets)}
@@ -816,6 +949,7 @@ def load_project(path: os.PathLike[str] | str, kernel_path: os.PathLike[str] | s
                                   if v.navigation is not None else {}),
                                **({"npcs": [{"id": str(npc.id), "name": npc.name,
                                              "x": npc.x, "y": npc.y, "z": npc.z,
+                                             **({"sprite": str(npc.sprite)} if npc.sprite is not None else {}),
                                              **({"event": str(npc.event)}
                                                 if npc.event is not None else {})}
                                             for npc in sorted(v.npcs, key=lambda x: str(x.id))]}
@@ -836,8 +970,20 @@ def load_project(path: os.PathLike[str] | str, kernel_path: os.PathLike[str] | s
                                                     "x": transition.x, "y": transition.y,
                                                     "z": transition.z}
                                                    for transition in sorted(v.transitions, key=lambda x: x.id)]}
-                                  if v.transitions else {})}
+                                  if v.transitions else {}),
+                               **({"presentation": {
+                                   **({"cameraProfile": v.presentation.camera_profile} if v.presentation.camera_profile else {}),
+                                   **({"background": str(v.presentation.background)} if v.presentation.background else {})}}
+                                  if v.presentation.camera_profile or v.presentation.background else {})}
                               for v, _ in maps_loc]}
+        if camera_profiles:
+            canonical["cameraProfiles"] = [{"id": v.id, "fovDegrees": v.fov_degrees,
+                                             "nearQ10": v.near_q10, "farQ10": v.far_q10}
+                                            for v in sorted(camera_profiles, key=lambda item: item.id)]
+        if audio_bindings:
+            canonical["audioBindings"] = [{"signalKind": item.signal_kind,
+                                           "asset": str(item.asset)}
+                                          for item in audio_bindings]
         if moves:
             canonical["moves"] = [{"schemaVersion": SCHEMA, "id": str(v.id), "name": v.name,
                                     **({"alwaysHit": True} if v.always_hit else {"accuracy": v.accuracy}),
@@ -885,7 +1031,9 @@ def load_project(path: os.PathLike[str] | str, kernel_path: os.PathLike[str] | s
                                tuple(mix_recipes), tuple(mix_results), tuple(items), tuple(shops), canonical_bytes,
                                hashlib.sha256(canonical_bytes).hexdigest(),
                                tuple(graph for graph, _ in sorted(event_locations,
-                                                                 key=lambda pair: str(pair[0].id))))
+                                                                 key=lambda pair: str(pair[0].id))),
+                               tuple(sorted(camera_profiles, key=lambda item: item.id)),
+                               tuple(audio_bindings))
         try:
             validate_world_records(loaded)
         except WorldRecordError as error:

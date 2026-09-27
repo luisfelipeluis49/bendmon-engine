@@ -16,22 +16,31 @@
     "items": {"type": "array", "maxItems": 256, "uniqueItems": true, "items": {"$ref": "#/$defs/jsonPath"}},
     "shops": {"type": "array", "maxItems": 256, "uniqueItems": true, "items": {"$ref": "#/$defs/jsonPath"}},
     "events": {"type": "array", "maxItems": 256, "uniqueItems": true, "items": {"$ref": "#/$defs/jsonPath"}},
-    "assets": {"type": "array", "maxItems": 256, "items": {"$ref": "#/$defs/asset"}}
+    "assets": {"type": "array", "maxItems": 256, "items": {"$ref": "#/$defs/asset"}},
+    "cameraProfiles": {"type": "array", "maxItems": 256, "items": {"$ref": "#/$defs/cameraProfile"}},
+    "audioBindings": {"type": "array", "maxItems": 256, "items": {"$ref": "#/$defs/audioBinding"}}
   },
   "$defs": {
     "id": {"type": "string", "pattern": "^[a-z][a-z0-9_-]{0,31}:[a-z][a-z0-9_-]{0,31}$"},
     "jsonPath": {"type": "string", "pattern": "^(?!\\.{1,2}(?:/|$))(?!.*\\/\\.{1,2}(?:/|$))[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)*\\.json$", "maxLength": 240},
+    "assetPath": {"type": "string", "pattern": "^(?!\\.{1,2}(?:/|$))(?!.*\\/\\.{1,2}(?:/|$))[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)*\\.(ppm|png|wav)$", "maxLength": 240},
     "ppmPath": {"type": "string", "pattern": "^(?!\\.{1,2}(?:/|$))(?!.*\\/\\.{1,2}(?:/|$))[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)*\\.ppm$", "maxLength": 240},
     "asset": {
       "type": "object", "additionalProperties": false,
       "required": ["id", "path", "mediaType", "bytes", "sha256"],
       "properties": {
         "id": {"$ref": "#/$defs/id"},
-        "path": {"$ref": "#/$defs/ppmPath"},
-        "mediaType": {"const": "image/x-portable-pixmap"},
+        "path": {"$ref": "#/$defs/assetPath"},
+        "mediaType": {"enum": ["image/x-portable-pixmap", "image/png", "audio/wav"]},
         "bytes": {"type": "integer", "minimum": 1, "maximum": 8388608},
         "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
       }
-    }
+    },
+    "cameraProfile": {"type": "object", "additionalProperties": false,
+      "required": ["id", "fovDegrees", "nearQ10", "farQ10"],
+      "properties": {"id": {"$ref": "#/$defs/id"}, "fovDegrees": {"type": "integer", "minimum": 30, "maximum": 90}, "nearQ10": {"type": "integer", "minimum": 1, "maximum": 524287}, "farQ10": {"type": "integer", "minimum": 2, "maximum": 524288}}},
+    "audioBinding": {"type": "object", "additionalProperties": false,
+      "required": ["signalKind", "asset"], "properties": {
+        "signalKind": {"type": "integer", "minimum": 0, "maximum": 999999999}, "asset": {"$ref": "#/$defs/id"}}}
   }
 }

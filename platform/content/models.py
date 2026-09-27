@@ -31,6 +31,26 @@ class Asset:
 
 
 @dataclass(frozen=True, slots=True)
+class CameraProfile:
+    id: str
+    fov_degrees: int
+    near_q10: int
+    far_q10: int
+
+
+@dataclass(frozen=True, slots=True)
+class AudioBinding:
+    signal_kind: int
+    asset: AssetId
+
+
+@dataclass(frozen=True, slots=True)
+class MapPresentation:
+    camera_profile: str | None = None
+    background: AssetId | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class SpeciesProgression:
     base_hp: int
     base_attack: int
@@ -164,6 +184,7 @@ class NpcRecord:
     y: int
     z: int
     event: EventId | None = None
+    sprite: AssetId | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -217,6 +238,8 @@ class MapRecord:
     triggers: tuple[TriggerRecord, ...] = ()
     encounter_regions: tuple[EncounterRegion, ...] = ()
     transitions: tuple[MapTransition, ...] = ()
+    camera_profile: str | None = None
+    presentation: MapPresentation = MapPresentation()
 
 
 @dataclass(frozen=True, slots=True)
@@ -279,3 +302,5 @@ class LoadedProject:
     canonical_json: bytes
     content_hash: str
     events: tuple[EventGraph, ...] = ()
+    camera_profiles: tuple[CameraProfile, ...] = ()
+    audio_bindings: tuple[AudioBinding, ...] = ()

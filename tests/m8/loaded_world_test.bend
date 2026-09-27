@@ -47,10 +47,16 @@ def event_applied(result: EventBridge.EventBridgeResult) -> Bool:
         events}: True{}
     case _: False{}
 
+def event_signal(result: EventBridge.EventBridgeResult) -> Bool:
+  match result:
+    case EventBridge.EventProgress{state}:
+      event_applied(EventBridge.step(state, Events.NoInput{}))
+    case _: False{}
+
 def event_first(result: Commands.CommandResult) -> Bool:
   match result:
     case Commands.EventStarted{EventBridge.EventProgress{state}}:
-      event_applied(EventBridge.step(state, Events.NoInput{}))
+      event_signal(EventBridge.step(state, Events.NoInput{}))
     case _: False{}
 
 def command_result(result: Exploration.OpenResult) -> Bool:

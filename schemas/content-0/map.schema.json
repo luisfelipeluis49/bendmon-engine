@@ -16,7 +16,10 @@
     "npcs": {"type": "array", "maxItems": 256, "items": {"$ref": "world/npc.schema.json"}},
     "triggers": {"type": "array", "maxItems": 256, "items": {"$ref": "world/trigger.schema.json"}},
     "encounterRegions": {"type": "array", "maxItems": 256, "items": {"$ref": "world/encounter-region.schema.json"}},
-    "transitions": {"type": "array", "maxItems": 256, "items": {"$ref": "world/transition.schema.json"}}
+    "transitions": {"type": "array", "maxItems": 256, "items": {"$ref": "world/transition.schema.json"}},
+    "presentation": {"type": "object", "additionalProperties": false, "properties": {
+      "cameraProfile": {"$ref": "#/$defs/id"}, "background": {"$ref": "#/$defs/id"}
+    }, "minProperties": 1}
   },
   "$defs": {
     "id": {"type": "string", "pattern": "^[a-z][a-z0-9_-]{0,31}:[a-z][a-z0-9_-]{0,31}$"},

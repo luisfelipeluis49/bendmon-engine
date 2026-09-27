@@ -241,7 +241,7 @@ def point_segment(+point: Geometry.Point, +start: Geometry.Point,
       +vz = wide_difference(fz, sz)
       +length = vector_length(vx, vz)
       +dot = wide_product_sum(dx, vx, dz, vz)
-      point_segment_projection(Nat.is_eq(length, 0n), point, start, finish,
+      point_segment_projection(signed_le_zero(dot), point, start, finish,
         dx, dz, vx, vz, dot, length)
 
 def collision_points(+a0: Geometry.Point, +a1: Geometry.Point,

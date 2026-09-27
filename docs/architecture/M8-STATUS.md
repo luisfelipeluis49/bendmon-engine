@@ -22,12 +22,13 @@ Status: complete. This file records the M8 exit evidence from
 
 ## Review and verification
 
-An independent Luna review found two navigation edge cases. Reversed-winding
-faces could invert interpolated elevation, and two actor paths could pass
-within the collision radius without crossing. Both have production fixes and
+Independent Luna reviews found navigation edge cases: reversed-winding faces
+could invert interpolated elevation, and swept actor paths could miss nearby
+segments or their starting endpoints. These have production fixes and
 native/JavaScript regression cases in `elevation_test.bend` and
-`actors_test.bend`. A same-prefix/different-full-digest save is rejected by
-the M8 host bridge test.
+`actors_test.bend`; a follow-up review confirmed the start-endpoint case is
+resolved. A same-prefix/different-full-digest save is rejected by the M8 host
+bridge test.
 
 `./scripts/bend PROOF.bend` reported `All terms check.` on the final Bend
 changes. `python3 scripts/verify.py` passed all 451 checks, recorded in

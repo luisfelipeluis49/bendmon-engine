@@ -87,7 +87,27 @@ def near_parallel_paths_collide() -> Bool:
   Actors.collision_points(point(1000, 1000), point(3000, 1000),
     point(1800, 1400), point(2800, 1400))
 
+def diverging_paths_outside_radius_do_not_collide() -> Bool:
+  Bool.not(Actors.collision_points(point(1000, 1000), point(2000, 1000),
+    point(700, 1500), point(100, 1500)))
+
+def diverging_paths_starting_within_radius_collide() -> Bool:
+  Actors.collision_points(point(1000, 1000), point(2000, 1000),
+    point(700, 1400), point(100, 1800))
+
+def point_at_start_radius_boundary_collides() -> Bool:
+  Actors.collision_points(point(1000, 1000), point(2000, 1000),
+    point(1000, 1512), point(1000, 1512))
+
+def diverging_paths_at_radius_boundary_collide() -> Bool:
+  Actors.collision_points(point(1000, 1000), point(2000, 1000),
+    point(1000, 1512), point(500, 2012))
+
 def main() -> List<&2, Bool>:
   [ordered_conflict(), unsorted_rejected(), separated_moves(),
     later_start_blocker_prevents_overlap(),
-    collinear_disjoint_moves_are_allowed(), near_parallel_paths_collide()]
+    collinear_disjoint_moves_are_allowed(), near_parallel_paths_collide(),
+    diverging_paths_outside_radius_do_not_collide(),
+    diverging_paths_starting_within_radius_collide(),
+    point_at_start_radius_boundary_collides(),
+    diverging_paths_at_radius_boundary_collide()]

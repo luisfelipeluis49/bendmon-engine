@@ -55,7 +55,14 @@ def main():
     run('canonical proof gate', ['bend', 'PROOF.bend'], contains='All terms check.')
     run('false law must fail', ['bend', 'tests/feasibility/false_law.bend'], expected=None, contains='Error:')
     run('open law must fail', ['bend', 'tests/feasibility/open_law.bend'], expected=None, contains='TODO')
-    for base in ['engine', 'platform', 'tests/feasibility', 'tests/content', 'tests/m7']:
+    run('M8 exact-hash sample save binding',
+        [sys.executable, 'scripts/bind_m8_save.py', 'examples/m8-world',
+         'tests/m8/sample-world-save.json', 'build/m8_save_snapshot.bend'])
+    run('M8 exact-hash sample catalog binding',
+        [sys.executable, 'scripts/bind_m8_world.py',
+         'examples/m8-world', 'build/m8_catalog.bend'])
+    for base in ['engine', 'platform', 'tests/feasibility', 'tests/content',
+                 'tests/m7', 'tests/m8']:
         for path in sorted((ROOT / base).rglob('*.bend')):
             if path.name in {'false_law.bend', 'open_law.bend'}:
                 continue
@@ -177,6 +184,25 @@ def main():
         assert native_result.stdout == js_result.stdout
         assert re.fullmatch(r'\[(?:1n|True\{\})(?:, (?:1n|True\{\}))*\]',
                             native_result.stdout.strip()), stem
+    for fixture in sorted((ROOT / 'tests/m8').glob('*_test.bend')):
+        stem = fixture.stem
+        native = BUILD / f'm8_{stem}'
+        javascript = BUILD / f'm8_{stem}.js'
+        run(f'M8 {stem} native build', ['bend', fixture, '-o', native], timeout=480)
+        run(f'M8 {stem} JS build', ['bend', fixture, '-o', javascript], timeout=480)
+        if stem == 'loaded_save_test':
+            expected_output = 'M8 save restored'
+            native_result = run(f'M8 {stem} native golden',
+                                [native, '--threads', '1', '--gpu', 'off'],
+                                output=expected_output)
+        else:
+            native_result = run(f'M8 {stem} native golden',
+                                [native, '--threads', '1', '--gpu', 'off'])
+        js_result = run(f'M8 {stem} JS golden', ['node', javascript])
+        assert native_result.stdout == js_result.stdout
+        if stem != 'loaded_save_test':
+            assert re.fullmatch(r'\[(?:1n|True\{\})(?:, (?:1n|True\{\}))*\]',
+                                native_result.stdout.strip()), stem
     run('battle replay fold golden', ['bend', 'tests/replay/fold_test.bend'], output='[1n, 1n, 1n, 1n]')
     run('battle runtime replay golden', ['bend', 'tests/replay/runtime_fold_test.bend'], output='[1n, 1n, 1n]')
     run('battle effect replay golden', ['bend', 'tests/replay/runtime_effect_fold_test.bend'], output='[1n]')
@@ -188,6 +214,12 @@ def main():
     loaded = json.loads(result.stdout)
     assert loaded['ok'] is True and len(loaded['contentHash']) == 64
     (EVIDENCE / 'content-project.json').write_text(json.dumps(loaded, indent=2) + '\n')
+    world_result = run('M8 world project loads through Bend',
+                       [sys.executable, 'scripts/validate_project.py',
+                        'examples/m8-world'])
+    world = json.loads(world_result.stdout)
+    assert world['ok'] is True and world['counts']['navigationFaces'] >= 1
+    assert world['counts']['events'] >= 1 and world['counts']['encounterRegions'] >= 1
     print(f'PASS: {len(RESULTS)} checks; laws, native/JS boundaries, CPU parallelism, presentation, content and milestone fixtures.')
 
 
@@ -199,4 +231,4 @@ if __name__ == '__main__':
         sys.exit(1)
     finally:
         EVIDENCE.mkdir(parents=True, exist_ok=True)
-        (EVIDENCE / 'verification.json').write_text(json.dumps({'checks': RESULTS, 'scope': 'M0-M7 deterministic engine, content, persistence, session integration and cross-target fixtures; visual gameplay is outside this gate'}, indent=2) + '\n')
+        (EVIDENCE / 'verification.json').write_text(json.dumps({'checks': RESULTS, 'scope': 'M0-M8 deterministic engine, validated world content, persistence, world/battle session integration and native/JS fixtures; visual gameplay is outside this gate'}, indent=2) + '\n')

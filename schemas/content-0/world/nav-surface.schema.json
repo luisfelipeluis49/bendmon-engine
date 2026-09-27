@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "content-0/world/nav-surface.schema.json",
+  "title": "Content-0 baked navigation surface",
+  "type": "object", "additionalProperties": false,
+  "required": ["vertices", "faces", "links"],
+  "properties": {
+    "vertices": {"type": "array", "minItems": 3, "maxItems": 256, "items": {"$ref": "#/$defs/vertex"}},
+    "faces": {"type": "array", "minItems": 1, "maxItems": 256, "items": {"$ref": "#/$defs/face"}},
+    "links": {"type": "array", "maxItems": 256, "items": {"$ref": "#/$defs/link"}}
+  },
+  "$defs": {
+    "index": {"type": "integer", "minimum": 0, "maximum": 255},
+    "coord": {"type": "integer", "minimum": -524288, "maximum": 524288},
+    "vertex": {"type": "object", "additionalProperties": false, "required": ["x", "y", "z"], "properties": {"x": {"$ref": "#/$defs/coord"}, "y": {"$ref": "#/$defs/coord"}, "z": {"$ref": "#/$defs/coord"}}},
+    "face": {"type": "array", "minItems": 3, "maxItems": 3, "items": {"$ref": "#/$defs/index"}},
+    "link": {"type": "object", "additionalProperties": false, "required": ["from_face", "to_face"], "properties": {"from_face": {"$ref": "#/$defs/index"}, "to_face": {"$ref": "#/$defs/index"}}}
+  }
+}

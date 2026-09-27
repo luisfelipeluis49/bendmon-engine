@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema", "$id": "content-0/world/npc.schema.json",
+  "title": "Content-0 NPC", "type": "object", "additionalProperties": false,
+  "required": ["id", "name", "x", "y", "z"],
+  "properties": {
+    "id": {"$ref": "../map.schema.json#/$defs/id"},
+    "name": {"$ref": "../map.schema.json#/$defs/name"},
+    "x": {"type": "integer", "minimum": -524288, "maximum": 524288},
+    "y": {"type": "integer", "minimum": -524288, "maximum": 524288},
+    "z": {"type": "integer", "minimum": -524288, "maximum": 524288},
+    "event": {"$ref": "../map.schema.json#/$defs/id"}
+  }
+}

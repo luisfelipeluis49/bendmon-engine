@@ -1,0 +1,5 @@
+{
+  "schemaVersion": "content-0",
+  "id": "sample:grove-encounter",
+  "entries": [{"species": "sample:mossling", "level": 1}]
+}

@@ -68,6 +68,39 @@ class LoaderTests(unittest.TestCase):
                 self.assertEqual(caught.exception.diagnostics[0].pointer,
                                  "/entries/0/level")
 
+    def test_weighted_encounter_entry_preserves_weight_and_optional_range(self) -> None:
+        path = self.root / "data/encounter.json"
+        encounter = json.loads(path.read_text())
+        encounter["entries"] = [{"species": "demo:fox", "weight": 17,
+                                 "minLevel": 4, "maxLevel": 9}]
+        write_json(path, encounter)
+        loaded = load_project(self.root, self.kernel)
+        entry = loaded.encounters[0].entries[0]
+        self.assertEqual((entry.weight, entry.min_level, entry.max_level),
+                         (17, 4, 9))
+        self.assertIsNone(entry.level)
+        canonical = json.loads(loaded.canonical_json)
+        self.assertEqual(canonical["encounters"][0]["entries"][0],
+                         {"species": "demo:fox", "weight": 17,
+                          "minLevel": 4, "maxLevel": 9})
+
+    def test_weighted_encounter_rejects_invalid_bounds_and_partial_ranges(self) -> None:
+        path = self.root / "data/encounter.json"
+        for entry, pointer in (
+            ({"species": "demo:fox", "weight": 0}, "/entries/0/weight"),
+            ({"species": "demo:fox", "weight": 10001}, "/entries/0/weight"),
+            ({"species": "demo:fox", "minLevel": 8}, "/entries/0"),
+            ({"species": "demo:fox", "minLevel": 9, "maxLevel": 8},
+             "/entries/0/maxLevel"),
+        ):
+            with self.subTest(entry=entry):
+                write_json(path, {"schemaVersion": "content-0",
+                                  "id": "demo:field", "entries": [entry]})
+                with self.assertRaises(ContentError) as caught:
+                    load_project(self.root, self.kernel)
+                self.assertEqual(caught.exception.diagnostics[0].pointer,
+                                 pointer)
+
     def test_species_progression_is_bounded_and_changes_content_identity(self) -> None:
         original = load_project(self.root, self.kernel).content_hash
         catalog_path = self.root / "data/catalog.json"

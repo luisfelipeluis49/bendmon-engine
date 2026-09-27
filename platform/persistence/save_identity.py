@@ -12,6 +12,7 @@ import re
 from typing import Any
 
 from .battle_replay import (M6_RULESET_VERSION, M7_RULESET_VERSION,
+                            M8_RULESET_VERSION,
                             RULESET_VERSION, SUPPORTED_REPLAY_RULESETS)
 
 _DIGEST = re.compile(r"[0-9a-f]{64}\Z")
@@ -73,6 +74,7 @@ def require_exact_identity(
 __all__ = [
     "M6_RULESET_VERSION",
     "M7_RULESET_VERSION",
+    "M8_RULESET_VERSION",
     "RULESET_VERSION",
     "SaveIdentity",
     "SaveIdentityError",

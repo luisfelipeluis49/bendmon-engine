@@ -24,11 +24,24 @@
     },
     "entry": {
       "type": "object", "additionalProperties": false,
-      "required": ["species", "level"],
+      "required": ["species"],
       "properties": {
         "species": {"$ref": "#/$defs/id"},
-        "level": {"type": "integer", "minimum": 1, "maximum": 200}
-      }
+        "level": {"type": "integer", "minimum": 1, "maximum": 200},
+        "weight": {"type": "integer", "minimum": 1, "maximum": 10000},
+        "minLevel": {"type": "integer", "minimum": 1, "maximum": 200},
+        "maxLevel": {"type": "integer", "minimum": 1, "maximum": 200}
+      },
+      "oneOf": [
+        {"not": {"anyOf": [{"required": ["level"]},
+                              {"required": ["minLevel"]},
+                              {"required": ["maxLevel"]}]}},
+        {"required": ["level"],
+         "not": {"anyOf": [{"required": ["minLevel"]},
+                             {"required": ["maxLevel"]}]}},
+        {"required": ["minLevel", "maxLevel"],
+         "not": {"required": ["level"]}}
+      ]
     }
   }
 }

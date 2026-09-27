@@ -11,7 +11,12 @@
     "name": {"$ref": "#/$defs/name"},
     "width": {"type": "integer", "minimum": 1, "maximum": 512},
     "height": {"type": "integer", "minimum": 1, "maximum": 512},
-    "encounters": {"type": "array", "maxItems": 256, "uniqueItems": true, "items": {"$ref": "#/$defs/id"}}
+    "encounters": {"type": "array", "maxItems": 256, "uniqueItems": true, "items": {"$ref": "#/$defs/id"}},
+    "navigation": {"$ref": "world/nav-surface.schema.json"},
+    "npcs": {"type": "array", "maxItems": 256, "items": {"$ref": "world/npc.schema.json"}},
+    "triggers": {"type": "array", "maxItems": 256, "items": {"$ref": "world/trigger.schema.json"}},
+    "encounterRegions": {"type": "array", "maxItems": 256, "items": {"$ref": "world/encounter-region.schema.json"}},
+    "transitions": {"type": "array", "maxItems": 256, "items": {"$ref": "world/transition.schema.json"}}
   },
   "$defs": {
     "id": {"type": "string", "pattern": "^[a-z][a-z0-9_-]{0,31}:[a-z][a-z0-9_-]{0,31}$"},

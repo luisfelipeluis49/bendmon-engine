@@ -16,6 +16,9 @@ RecipeId = NewType("RecipeId", str)
 ResultId = NewType("ResultId", str)
 ItemId = NewType("ItemId", str)
 ShopId = NewType("ShopId", str)
+NpcId = NewType("NpcId", str)
+TriggerId = NewType("TriggerId", str)
+EventId = NewType("EventId", str)
 
 
 @dataclass(frozen=True, slots=True)
@@ -107,7 +110,10 @@ class Catalog:
 @dataclass(frozen=True, slots=True)
 class EncounterEntry:
     species: SpeciesId
-    level: int
+    level: int | None = None
+    weight: int = 1
+    min_level: int = 1
+    max_level: int = 200
 
 
 @dataclass(frozen=True, slots=True)
@@ -124,12 +130,93 @@ class Encounter:
 
 
 @dataclass(frozen=True, slots=True)
+class NavVertex:
+    x: int
+    y: int
+    z: int
+
+
+@dataclass(frozen=True, slots=True)
+class NavTriangle:
+    a: int
+    b: int
+    c: int
+
+
+@dataclass(frozen=True, slots=True)
+class NavLink:
+    from_face: int
+    to_face: int
+
+
+@dataclass(frozen=True, slots=True)
+class NavSurface:
+    vertices: tuple[NavVertex, ...]
+    faces: tuple[NavTriangle, ...]
+    links: tuple[NavLink, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class NpcRecord:
+    id: NpcId
+    name: str
+    x: int
+    y: int
+    z: int
+    event: EventId | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class TriggerRecord:
+    id: TriggerId
+    event: EventId
+    vertices: tuple[int, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class EncounterRegion:
+    id: str
+    encounter: EncounterId
+    faces: tuple[int, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class MapTransition:
+    id: str
+    target_map: MapId
+    vertices: tuple[int, ...]
+    x: int
+    y: int
+    z: int
+
+
+@dataclass(frozen=True, slots=True)
+class EventNode:
+    id: int
+    opcode: str
+    arguments: tuple[tuple[str, int], ...]
+    next: tuple[int, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class EventGraph:
+    id: EventId
+    entry: int
+    nodes: tuple[EventNode, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class MapRecord:
     id: MapId
     name: str
     width: int
     height: int
     encounters: tuple[EncounterId, ...]
+    navigation: NavSurface | None = None
+    npcs: tuple[NpcRecord, ...] = ()
+    triggers: tuple[TriggerRecord, ...] = ()
+    encounter_regions: tuple[EncounterRegion, ...] = ()
+    transitions: tuple[MapTransition, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -191,3 +278,4 @@ class LoadedProject:
     shops: tuple[ShopRecord, ...]
     canonical_json: bytes
     content_hash: str
+    events: tuple[EventGraph, ...] = ()

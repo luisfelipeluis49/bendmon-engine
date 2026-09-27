@@ -32,7 +32,7 @@ engine/
   content/                       # decoded types, references, validation
   battle/  moves/  mixing/        # scheduler, effects, recipes, learning
   progression/  inventory/       # XP, stats, capture/party/storage transactions
-  world/                         # grid, encounters, event machine
+  world/                         # fixed-point navigation, encounters, events
   save/  replay/                 # pure representations, compatibility
 platform/                        # trusted IO and narrow host adapters
 renderer/                        # authoritative-state projections
@@ -60,7 +60,7 @@ The M0 implementation now occupies the bootstrap core, feasibility shell and tes
 | Type | TypeId in ruleset-owned type registry; content labels/assets by permitted schema | Type interaction mathematics and chart authority cannot be project-overridden |
 | BattleState | battle ID, logical tick, combatants, phase/timing, reservations, queue, RNG, completion, observations | Valid queue, alive/eligibility checks, stable ordering |
 | Combatant | BattleActorId referencing MonsterId, side/slot, HP/status/stat stages, action phase, source cooldowns | Battle identity distinct from persistent identity; no aliasing of mutable combatants |
-| WorldState | map/location/grid elevation, NPC state, inventory, flags, quests, event cursors | Valid collision/location; bounded event transitions |
+| WorldState | map and fixed-point location/elevation, NPC state, inventory, flags, quests, event cursors | Valid baked-surface position; bounded event transitions |
 | Map | MapId, dimensions, layers, collision/elevation/navigation links, spawns/triggers/transitions | Decorative geometry cannot authorize movement |
 | Trainer / Encounter | TrainerId/EncounterId, bounded party or weighted entries, refs, conditions | All IDs resolve; legal levels; engine-defined probability sampling |
 | Quest / Dialogue / Event | Typed IDs, finite graph nodes, typed predicates/actions, asset/text refs | Bounded execution; no user expressions or calls to code |

@@ -4,6 +4,7 @@
   "entry": 0,
   "nodes": [
     {"id": 0, "op": "setValue", "key": 7, "value": 1, "next": [1]},
-    {"id": 1, "op": "stop", "next": []}
+    {"id": 1, "op": "emitSignal", "kind": 7, "bytes": 1, "next": [2]},
+    {"id": 2, "op": "stop", "next": []}
   ]
 }

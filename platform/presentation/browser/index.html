@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>M9 Browser Preview</title>
+<style>
+  body { margin: 0; background: #101928; color: #eef3f6; font: 16px system-ui, sans-serif; }
+  main { max-width: 1280px; margin: 1rem auto; padding: 0 1rem; }
+  canvas { display: block; width: 100%; aspect-ratio: 16 / 9; background: #17212d; }
+  button { margin: 1rem 0; padding: .6rem 1rem; }
+  #status { min-height: 1.5em; }
+</style>
+<main>
+  <h1>M9 Browser Preview</h1>
+  <canvas id="scene" width="1280" height="720" aria-label="Read-only M9 scene preview"></canvas>
+  <button id="play" type="button">Play bound cues</button>
+  <p id="status" role="status">Loading validated preview bundle…</p>
+</main>
+<script type="module" src="./main.mjs"></script>
+</html>

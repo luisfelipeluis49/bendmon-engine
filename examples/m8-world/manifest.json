@@ -4,6 +4,12 @@
   "maps": ["data/grove.json"],
   "encounters": ["data/grove-encounter.json"],
   "events": ["data/greeting.json"],
+  "cameraProfiles": [
+    {"id": "sample:grove-camera", "fovDegrees": 60, "nearQ10": 16, "farQ10": 262144}
+  ],
+  "audioBindings": [
+    {"signalKind": 7, "asset": "sample:greeting"}
+  ],
   "assets": [
     {
       "id": "sample:pixel",
@@ -11,6 +17,27 @@
       "mediaType": "image/x-portable-pixmap",
       "bytes": 14,
       "sha256": "d7ebafa2a08b2f6547c9df2ed2ea85cb4a3cfb8d3b763aed6a90488f08ee4568"
+    },
+    {
+      "id": "sample:grove-sky",
+      "path": "assets/grove-sky.png",
+      "mediaType": "image/png",
+      "bytes": 383,
+      "sha256": "363ba2b50213cbcd5504854b30eb01a5dda142da04a807ff08d3c080d75fa503"
+    },
+    {
+      "id": "sample:guide",
+      "path": "assets/guide.png",
+      "mediaType": "image/png",
+      "bytes": 192,
+      "sha256": "cc2e5be99505fc9d8fa27fa5a9bbd2e4185f56214ea0fc992260f017001ac5ea"
+    },
+    {
+      "id": "sample:greeting",
+      "path": "assets/greeting.wav",
+      "mediaType": "audio/wav",
+      "bytes": 6658,
+      "sha256": "27e56703679a25ea44e81a7951781ddb46458c00d6dfbe719a4535e3b480b99e"
     }
   ]
 }

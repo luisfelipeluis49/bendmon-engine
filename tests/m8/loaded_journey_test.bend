@@ -136,10 +136,16 @@ def after_event(result: WorldSession.SessionResult) -> Bool:
         east()))
     case _: False{}
 
-def after_command(result: WorldSession.SessionResult) -> Bool:
+def after_signal(result: WorldSession.SessionResult) -> Bool:
   match result:
     case WorldSession.Advanced{state}:
       after_event(WorldSession.event_step(state, Events.NoInput{}))
+    case _: False{}
+
+def after_command(result: WorldSession.SessionResult) -> Bool:
+  match result:
+    case WorldSession.Advanced{state}:
+      after_signal(WorldSession.event_step(state, Events.NoInput{}))
     case _: False{}
 
 def from_initial(found: Maybe<WorldSession.WorldSession>) -> Bool:

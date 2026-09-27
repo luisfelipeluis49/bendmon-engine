@@ -7,6 +7,7 @@ import ./geometry.bend as Geometry
 import ./encounter_handoff.bend as Handoff
 import ./battle_bridge.bend as BattleBridge
 import ./events.bend as Events
+import ./presentation_cues.bend as Presentation
 import ../m7/playable.bend as Playable
 import ../battle/runtime.bend as Runtime
 import ../battle/model.bend as Battle
@@ -33,6 +34,9 @@ type SessionResult is Data:
     captures: List<&2, M7.CaptureEvent>}
   BattleChoice{state: WorldSession}
 
+type PresentedResult is Data:
+  PresentedResult{result: SessionResult, cues: List<&2, Presentation.Cue>}
+
 type PreparedSession is Data:
   PreparedSession{world: EventBridge.State, encounter: Handoff.Prepared}
 
@@ -47,37 +51,54 @@ def has_event(world: EventBridge.State) -> Bool:
         case None{}: False{}
         case Some{machine}: True{}
 
-def command_event(result: EventBridge.EventBridgeResult) -> SessionResult:
+def command_event(result: EventBridge.EventBridgeResult,
+  ordinal: Nat) -> PresentedResult:
   match result:
-    case EventBridge.EventRejected{state}: Rejected{WorldSession{state, None{}}}
-    case EventBridge.EventCommitted{state, events}: Advanced{WorldSession{state, None{}}}
-    case EventBridge.EventProgress{state}: Advanced{WorldSession{state, None{}}}
-    case EventBridge.EventYielded{state, kind}: Advanced{WorldSession{state, None{}}}
+    case EventBridge.EventRejected{state}:
+      PresentedResult{Rejected{WorldSession{state, None{}}}, []}
+    case EventBridge.EventCommitted{state, events}:
+      PresentedResult{Advanced{WorldSession{state, None{}}},
+        Presentation.ordered_outputs(events, ordinal)}
+    case EventBridge.EventProgress{state}:
+      PresentedResult{Advanced{WorldSession{state, None{}}}, []}
+    case EventBridge.EventYielded{state, kind}:
+      PresentedResult{Advanced{WorldSession{state, None{}}},
+        Presentation.yield_cues(kind, ordinal, 0n)}
     case EventBridge.EventAborted{state, diagnostic}:
-      EventAborted{WorldSession{state, None{}}, diagnostic}
+      PresentedResult{EventAborted{WorldSession{state, None{}}, diagnostic}, []}
 
-def command_route(result: Commands.CommandResult) -> SessionResult:
+def command_route(result: Commands.CommandResult, ordinal: Nat) -> PresentedResult:
   match result:
-    case Commands.Applied{state}: Advanced{WorldSession{state, None{}}}
-    case Commands.EventStarted{result}: command_event(result)
-    case Commands.Rejected{state}: Rejected{WorldSession{state, None{}}}
+    case Commands.Applied{state}:
+      PresentedResult{Advanced{WorldSession{state, None{}}}, []}
+    case Commands.EventStarted{result}: command_event(result, ordinal)
+    case Commands.Rejected{state}:
+      PresentedResult{Rejected{WorldSession{state, None{}}}, []}
 
 def command_ready(ready: Bool, catalog: Catalog.Catalog, +old: WorldSession,
-  command: Commands.Command) -> SessionResult:
+  command: Commands.Command, ordinal: Nat) -> PresentedResult:
   match ready:
-    case False{}: Rejected{old}
+    case False{}: PresentedResult{Rejected{old}, []}
     case True{}:
       match old:
         case WorldSession{world, None{}}:
-          command_route(Commands.run(command, catalog, world))
-        case _: Rejected{old}
+          command_route(Commands.run(command, catalog, world), ordinal)
+        case _: PresentedResult{Rejected{old}, []}
+
+def command_presented(catalog: Catalog.Catalog, +old: WorldSession,
+  command: Commands.Command, ordinal: Nat) -> PresentedResult:
+  match old:
+    case WorldSession{world, None{}}:
+      command_ready(Bool.not(has_event(world)), catalog, old, command, ordinal)
+    case _: PresentedResult{Rejected{old}, []}
+
+def presented_session(result: PresentedResult) -> SessionResult:
+  match result:
+    case PresentedResult{result, cues}: result
 
 def command(catalog: Catalog.Catalog, +old: WorldSession,
   command: Commands.Command) -> SessionResult:
-  match old:
-    case WorldSession{world, None{}}:
-      command_ready(Bool.not(has_event(world)), catalog, old, command)
-    case _: Rejected{old}
+  presented_session(command_presented(catalog, old, command, 0n))
 
 def replace_world_exploration(old: EventBridge.State,
   next: Exploration.State) -> EventBridge.State:
@@ -112,20 +133,19 @@ def move(catalog: Catalog.Catalog, +old: WorldSession,
       move_ready(Bool.not(has_event(world)), catalog, old, input)
     case _: Rejected{old}
 
-def event_step_route(result: EventBridge.EventBridgeResult) -> SessionResult:
-  match result:
-    case EventBridge.EventRejected{state}: Rejected{WorldSession{state, None{}}}
-    case EventBridge.EventCommitted{state, events}: Advanced{WorldSession{state, None{}}}
-    case EventBridge.EventProgress{state}: Advanced{WorldSession{state, None{}}}
-    case EventBridge.EventYielded{state, kind}: Advanced{WorldSession{state, None{}}}
-    case EventBridge.EventAborted{state, diagnostic}:
-      EventAborted{WorldSession{state, None{}}, diagnostic}
+def event_step_route(result: EventBridge.EventBridgeResult,
+  ordinal: Nat) -> PresentedResult:
+  command_event(result, ordinal)
 
-def event_step(+old: WorldSession, input: Events.Input) -> SessionResult:
+def event_step_presented(+old: WorldSession, input: Events.Input,
+  ordinal: Nat) -> PresentedResult:
   match old:
     case WorldSession{world, None{}}:
-      event_step_route(EventBridge.step(world, input))
-    case _: Rejected{old}
+      event_step_route(EventBridge.step(world, input), ordinal)
+    case _: PresentedResult{Rejected{old}, []}
+
+def event_step(+old: WorldSession, input: Events.Input) -> SessionResult:
+  presented_session(event_step_presented(old, input, 0n))
 
 def persistent_world(old: EventBridge.State) -> Events.World:
   match old:

@@ -203,6 +203,52 @@ def main():
         if stem != 'loaded_save_test':
             assert re.fullmatch(r'\[(?:1n|True\{\})(?:, (?:1n|True\{\}))*\]',
                                 native_result.stdout.strip()), stem
+    run('M9 CPU raster build', ['cc', '-std=c11', '-Wall', '-Wextra',
+        '-Werror', 'tests/m9/raster_test.c', 'platform/presentation/raster.c',
+        '-lm', '-o', BUILD / 'm9_raster_test'])
+    run('M9 CPU raster depth, VFX and bounds', [BUILD / 'm9_raster_test',
+        EVIDENCE / 'm9_raster.ppm'],
+        output='M9 raster depth, VFX and bounds pass')
+    run('M9 CPU raster shared build', ['cc', '-std=c11', '-O2', '-fPIC', '-shared',
+        'platform/presentation/raster.c', '-lm', '-o', BUILD / 'm9-raster.so'])
+    run('M9 verified media decode', [sys.executable, '-m', 'unittest',
+        'tests.m9.test_media', '-v'])
+    run('M9 bounded scene wire', [sys.executable, '-m', 'unittest',
+        'tests.m9.test_wire', '-v'])
+    run('M9 loaded scene composition', [sys.executable, '-m', 'unittest',
+        'tests.m9.test_composer', '-v'])
+    run('M9 browser preview export', [sys.executable, '-m', 'unittest',
+        'tests.m9.test_browser_export', '-v'])
+    run('M9 browser adapter smoke', ['node', '--test',
+        'tests/m9/browser/renderer.test.mjs'])
+    for fixture in sorted((ROOT / 'tests/m9').glob('*_test.bend')):
+        stem = fixture.stem
+        native = BUILD / f'm9_{stem}'
+        javascript = BUILD / f'm9_{stem}.js'
+        run(f'M9 {stem} native build', ['bend', fixture, '-o', native], timeout=480)
+        run(f'M9 {stem} JS build', ['bend', fixture, '-o', javascript], timeout=480)
+        native_result = run(f'M9 {stem} native golden',
+                            [native, '--threads', '1', '--gpu', 'off'])
+        javascript_result = run(f'M9 {stem} JS golden', ['node', javascript])
+        assert native_result.stdout == javascript_result.stdout
+        if stem == 'projection_wire_test':
+            import_path = str(ROOT / 'platform')
+            if import_path not in sys.path:
+                sys.path.insert(0, import_path)
+            from presentation.wire import parse_scene
+            scene = parse_scene(json.loads(native_result.stdout.strip()))
+            run('M9 browser parses Bend scene wire', ['node',
+                'tests/m9/browser/parse_fixture.mjs',
+                json.loads(native_result.stdout.strip())],
+                output=f'{scene.content_identity},{scene.map_id}')
+    run('M9 loaded world, event, encounter, battle and return parity',
+        [sys.executable, 'scripts/run_m9_journey.py'],
+        contains='M9 loaded journey parity and presentation evidence', timeout=180)
+    run('M9 SDL3 software window, input, audio and sequence smoke',
+        ['bash', 'tests/m9/sdl3_smoke.sh'], timeout=600)
+    run('M9 loaded SDL world, battle, return and cue playback',
+        ['bash', 'tests/m9/loaded_graphical.sh'],
+        contains='cue-frame-index=1', timeout=180)
     run('battle replay fold golden', ['bend', 'tests/replay/fold_test.bend'], output='[1n, 1n, 1n, 1n]')
     run('battle runtime replay golden', ['bend', 'tests/replay/runtime_fold_test.bend'], output='[1n, 1n, 1n]')
     run('battle effect replay golden', ['bend', 'tests/replay/runtime_effect_fold_test.bend'], output='[1n]')
@@ -231,4 +277,4 @@ if __name__ == '__main__':
         sys.exit(1)
     finally:
         EVIDENCE.mkdir(parents=True, exist_ok=True)
-        (EVIDENCE / 'verification.json').write_text(json.dumps({'checks': RESULTS, 'scope': 'M0-M8 deterministic engine, validated world content, persistence, world/battle session integration and native/JS fixtures; visual gameplay is outside this gate'}, indent=2) + '\n')
+        (EVIDENCE / 'verification.json').write_text(json.dumps({'checks': RESULTS, 'scope': 'M0-M9 deterministic engine, validated world and media content, native/JS journey parity, CPU graphics and SDL3 smoke; live visual QA is recorded separately'}, indent=2) + '\n')

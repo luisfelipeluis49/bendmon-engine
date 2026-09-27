@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from .models import (Encounter, EncounterId, EventGraph, EventId, EventNode, EncounterRegion,
+from .models import (AssetId, Encounter, EncounterId, EventGraph, EventId, EventNode, EncounterRegion, MapPresentation,
                      MapId, MapRecord, MapTransition, NavLink, NavSurface,
                      NavTriangle, NavVertex, NpcId, NpcRecord, TriggerId,
                      TriggerRecord)
@@ -242,7 +242,7 @@ def parse_world_content(root: Any, map_paths: list[str], event_paths: list[str],
         "npc": {}, "trigger": {}, "region": {}, "transition": {}}
     total_refs = 0
     for rel in map_paths:
-        d = _object(_doc(root, rel), {"schemaVersion", "id", "name", "width", "height", "encounters"}, rel, "", {"navigation", "npcs", "triggers", "encounterRegions", "transitions"})
+        d = _object(_doc(root, rel), {"schemaVersion", "id", "name", "width", "height", "encounters"}, rel, "", {"navigation", "npcs", "triggers", "encounterRegions", "transitions", "presentation"})
         map_id = MapId(_id(d["id"], rel, "/id"))
         refs = tuple(EncounterId(_id(v, rel, f"/encounters/{i}")) for i, v in enumerate(_array(d["encounters"], rel, "/encounters")))
         _unique([str(v) for v in refs], rel, "/encounters", "encounter reference")
@@ -260,7 +260,7 @@ def parse_world_content(root: Any, map_paths: list[str], event_paths: list[str],
         npcs: list[NpcRecord] = []
         for i, raw in enumerate(_array(d.get("npcs", []), rel, "/npcs")):
             p = f"/npcs/{i}"
-            row = _object(raw, {"id", "name", "x", "y", "z"}, rel, p, {"event"})
+            row = _object(raw, {"id", "name", "x", "y", "z"}, rel, p, {"event", "sprite"})
             npc_id = NpcId(_id(row["id"], rel, p + "/id"))
             event_id = EventId(_id(row["event"], rel, p + "/event")) if "event" in row else None
             if event_id is not None and str(event_id) not in event_ids:
@@ -270,8 +270,9 @@ def parse_world_content(root: Any, map_paths: list[str], event_paths: list[str],
             if navigation is None or not _point_on_surface(coords[0], coords[2], navigation):
                 _fail("npc-position", rel, p,
                       "NPC position must project onto a navigation face", npc_id)
+            sprite = AssetId(_id(row["sprite"], rel, p + "/sprite")) if "sprite" in row else None
             npcs.append(NpcRecord(npc_id, _string(row["name"], rel, p + "/name"),
-                                  *coords, event_id))
+                                  *coords, event_id, sprite))
         triggers: list[TriggerRecord] = []
         for i, raw in enumerate(_array(d.get("triggers", []), rel, "/triggers")):
             p = f"/triggers/{i}"
@@ -325,12 +326,19 @@ def parse_world_content(root: Any, map_paths: list[str], event_paths: list[str],
                     _fail("duplicate", rel, f"/{kind}/{idx}/id",
                           f"duplicate {kind} ID", identity)
                 seen[identity] = (rel, f"/{kind}/{idx}/id")
+        presentation = MapPresentation()
+        if "presentation" in d:
+            row = _object(d["presentation"], set(), rel, "/presentation", {"cameraProfile", "background"})
+            camera = _id(row["cameraProfile"], rel, "/presentation/cameraProfile") if "cameraProfile" in row else None
+            background = AssetId(_id(row["background"], rel, "/presentation/background")) if "background" in row else None
+            presentation = MapPresentation(camera, background)
         maps_loc.append((MapRecord(map_id, map_name, width, height, refs,
                                    navigation,
                                    tuple(sorted(npcs, key=lambda row: str(row.id))),
                                    tuple(sorted(triggers, key=lambda row: str(row.id))),
                                    tuple(sorted(regions, key=lambda row: row.id)),
-                                   tuple(sorted(transitions, key=lambda row: row.id))), rel))
+                                   tuple(sorted(transitions, key=lambda row: row.id)),
+                                   presentation.camera_profile, presentation), rel))
     if total_refs > MAX_TOTAL_REFS:
         _fail("reference-limit", "manifest.json", "/maps", "more than 4096 map references")
     _unique([str(v.id) for v, _ in maps_loc], "manifest.json", "/maps", "map ID")

@@ -7,15 +7,20 @@ permissions:
 jobs:
   linux-cpu:
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
       - name: Set up Node.js for JavaScript differential checks
         uses: actions/setup-node@v4
         with:
           node-version: 20
-      - name: Install native compiler
-        run: sudo apt-get update && sudo apt-get install -y clang
+      - name: Install native compiler and SDL3 desktop dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang ninja-build libasound2-dev \
+            libx11-dev libxext-dev libxrandr-dev libxcursor-dev \
+            libxfixes-dev libxi-dev libxss-dev libwayland-dev \
+            libxkbcommon-dev wayland-protocols
       - name: Install pinned local Bend
         run: python3 scripts/setup_toolchain.py
       - name: Verify laws, negative gates and native fixtures

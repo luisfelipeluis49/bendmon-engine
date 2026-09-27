@@ -55,6 +55,9 @@ def main():
     run('canonical proof gate', ['bend', 'PROOF.bend'], contains='All terms check.')
     run('false law must fail', ['bend', 'tests/feasibility/false_law.bend'], expected=None, contains='Error:')
     run('open law must fail', ['bend', 'tests/feasibility/open_law.bend'], expected=None, contains='TODO')
+    # Binding a sample project calls the validated loader, which needs this
+    # native kernel even in a clean checkout with an empty build directory.
+    run('native content kernel build', ['bend', 'platform/content/kernel.bend', '-o', BUILD / 'content-kernel'])
     run('M8 exact-hash sample save binding',
         [sys.executable, 'scripts/bind_m8_save.py', 'examples/m8-world',
          'tests/m8/sample-world-save.json', 'build/m8_save_snapshot.bend'])
@@ -98,7 +101,6 @@ def main():
         assert (tone.getnchannels(), tone.getsampwidth(), tone.getframerate(), tone.getnframes()) == (1, 2, 22050, 3969)
     hashes = {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted(artifacts.iterdir()) if p.suffix in {'.ppm', '.wav'}}
     (EVIDENCE / 'artifact-hashes.json').write_text(json.dumps(hashes, indent=2) + '\n')
-    run('native content kernel build', ['bend', 'platform/content/kernel.bend', '-o', BUILD / 'content-kernel'])
     run('content kernel and loader regression suite', [sys.executable, '-m', 'unittest', 'discover', '-s', 'tests/content', '-p', 'test_*.py', '-v'], timeout=180)
     run('generated XP table is current', [sys.executable, 'scripts/generate_xp_table.py', '--check'])
     run('M1 architecture contract suite', [sys.executable, '-m', 'unittest',

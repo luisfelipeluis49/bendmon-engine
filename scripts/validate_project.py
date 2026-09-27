@@ -12,6 +12,22 @@ if str(PLATFORM) not in sys.path:
     sys.path.insert(0, str(PLATFORM))
 
 from content.loader import ContentError, InfrastructureError, load_project
+from content.models import LoadedProject
+
+
+def _counts(loaded: LoadedProject) -> dict[str, int]:
+    return {
+        "assets": len(loaded.assets), "species": len(loaded.species),
+        "encounters": len(loaded.encounters), "maps": len(loaded.maps),
+        "items": len(loaded.items), "shops": len(loaded.shops),
+        "events": len(loaded.events),
+        "navigationFaces": sum(len(row.navigation.faces)
+                               for row in loaded.maps if row.navigation is not None),
+        "npcs": sum(len(row.npcs) for row in loaded.maps),
+        "triggers": sum(len(row.triggers) for row in loaded.maps),
+        "encounterRegions": sum(len(row.encounter_regions) for row in loaded.maps),
+        "transitions": sum(len(row.transitions) for row in loaded.maps),
+    }
 
 
 def main(argv: list[str]) -> int:
@@ -27,9 +43,7 @@ def main(argv: list[str]) -> int:
         print(json.dumps({"ok": False, "error": str(exc)}, ensure_ascii=False, separators=(",", ":")))
         return 1
     print(json.dumps({"ok": True, "projectId": str(loaded.project.id), "contentHash": loaded.content_hash,
-                      "counts": {"assets": len(loaded.assets), "species": len(loaded.species),
-                                 "encounters": len(loaded.encounters), "maps": len(loaded.maps),
-                                 "items": len(loaded.items), "shops": len(loaded.shops)}}, separators=(",", ":")))
+                      "counts": _counts(loaded)}, separators=(",", ":")))
     return 0
 
 

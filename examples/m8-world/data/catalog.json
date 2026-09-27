@@ -1,0 +1,18 @@
+{
+  "schemaVersion": "content-0",
+  "id": "sample:creatures",
+  "species": [
+    {
+      "id": "sample:mossling",
+      "name": "Mossling",
+      "sprite": "sample:pixel",
+      "progression": {
+        "baseStats": {"hp": 45, "attack": 52, "defense": 43,
+          "specialAttack": 38, "specialDefense": 47, "speed": 55},
+        "captureRate": 4500,
+        "baseXpYield": 42,
+        "baseCurrencyYield": 12
+      }
+    }
+  ]
+}

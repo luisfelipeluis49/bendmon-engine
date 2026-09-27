@@ -1,0 +1,9 @@
+{
+  "schemaVersion": "content-0",
+  "id": "sample:greeting",
+  "entry": 0,
+  "nodes": [
+    {"id": 0, "op": "setValue", "key": 7, "value": 1, "next": [1]},
+    {"id": 1, "op": "stop", "next": []}
+  ]
+}

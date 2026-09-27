@@ -1,0 +1,29 @@
+{
+  "schemaVersion": "content-0",
+  "id": "sample:grove",
+  "name": "Fern Grove",
+  "width": 64,
+  "height": 64,
+  "encounters": ["sample:grove-encounter"],
+  "navigation": {
+    "vertices": [
+      {"x": 0, "y": 0, "z": 0},
+      {"x": 65536, "y": 0, "z": 0},
+      {"x": 0, "y": 0, "z": 65536}
+    ],
+    "faces": [[0, 1, 2]],
+    "links": []
+  },
+  "npcs": [
+    {"id": "sample:guide", "name": "Juniper", "x": 1024, "y": 0, "z": 1024, "event": "sample:greeting"}
+  ],
+  "triggers": [
+    {"id": "sample:arrival", "event": "sample:greeting", "vertices": [0, 1, 2]}
+  ],
+  "encounterRegions": [
+    {"id": "sample:fern-patch", "encounter": "sample:grove-encounter", "faces": [0]}
+  ],
+  "transitions": [
+    {"id": "sample:grove-gate", "targetMap": "sample:grove", "vertices": [0, 1, 2], "x": 1024, "y": 0, "z": 1024}
+  ]
+}

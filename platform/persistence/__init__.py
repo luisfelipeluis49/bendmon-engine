@@ -23,6 +23,16 @@ from .learning_state import (
     decode_learning_state,
     encode_learning_state,
 )
+from .world_state import (
+    MAX_REPLAY_COMMANDS,
+    MAX_WORLD_SAVE_BYTES,
+    WORLD_SAVE_SCHEMA_VERSION,
+    WorldSnapshot,
+    WorldStateError,
+    decode_world_state,
+    encode_world_state,
+    replay_world_commands,
+)
 
 __all__ = [
     "CanonicalJSONError",
@@ -43,4 +53,12 @@ __all__ = [
     "RecipeHarmony",
     "encode_learning_state",
     "decode_learning_state",
+    "MAX_REPLAY_COMMANDS",
+    "MAX_WORLD_SAVE_BYTES",
+    "WORLD_SAVE_SCHEMA_VERSION",
+    "WorldSnapshot",
+    "WorldStateError",
+    "encode_world_state",
+    "decode_world_state",
+    "replay_world_commands",
 ]

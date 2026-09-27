@@ -12,24 +12,21 @@ import subprocess
 import tempfile
 from typing import Any, Callable, Iterable
 
+from .world import (WorldRecordError, parse_world_content,
+                    validate_world_records)
+from .world_limits import (MAX_DEPTH, MAX_ENTITIES, MAX_FILES, MAX_JSON_BYTES,
+                           MAX_PATH, MAX_PER_RECORD, MAX_TOTAL_BYTES,
+                           MAX_TOTAL_REFS, MAX_WIRE_BYTES, MAX_WIRE_TOKENS)
+
 from .models import (Asset, AssetId, CapacityTier, Catalog, CatalogId, Encounter,
                      EvolutionPredicate, EvolutionRule,
                      EncounterEntry, EncounterId, ItemReward, LoadedProject, MapId,
                      MapRecord, ItemId, ItemRecord, LevelMove, MixRecipe, MixResultDescriptor, MoveId,
                      MoveRecord, Project, ProjectId, RecipeId, ResultId, TypeId,
-                     ShopId, ShopRecord, Species, SpeciesId, SpeciesProgression)
+                     ShopId, ShopRecord, Species, SpeciesId, SpeciesProgression,
+                     )
 
 SCHEMA = "content-0"
-MAX_JSON_BYTES = 1 << 20
-MAX_TOTAL_BYTES = 8 << 20
-MAX_FILES = 64
-MAX_ENTITIES = 256
-MAX_PER_RECORD = 256
-MAX_TOTAL_REFS = 4096
-MAX_DEPTH = 16
-MAX_PATH = 240
-MAX_WIRE_TOKENS = 140_000
-MAX_WIRE_BYTES = 2 << 20
 ID_RE = re.compile(r"[a-z][a-z0-9_-]{0,31}:[a-z][a-z0-9_-]{0,31}\Z")
 PATH_COMPONENT_RE = re.compile(r"[A-Za-z0-9_.-]+\Z")
 SHA_RE = re.compile(r"[0-9a-f]{64}\Z")
@@ -436,12 +433,13 @@ def load_project(path: os.PathLike[str] | str, kernel_path: os.PathLike[str] | s
     root = _Root(path)
     try:
         p = _object(_doc(root, "project.json"), {"schemaVersion", "id", "name", "ruleset", "entryMap"}, "project.json", "", {"capacityTiers"})
+        project_document = dict(p)
         if p["ruleset"] != "unassigned":
             _fail("ruleset", "project.json", "/ruleset", 'ruleset must be "unassigned"')
         capacity_tiers = _capacity_tiers(p["capacityTiers"]) if "capacityTiers" in p else ()
         project = Project(ProjectId(_id(p["id"], "project.json", "/id")), _string(p["name"], "project.json", "/name"),
                           "unassigned", MapId(_id(p["entryMap"], "project.json", "/entryMap")), capacity_tiers)
-        m = _object(_doc(root, "manifest.json"), {"schemaVersion", "catalogs", "maps", "encounters", "assets"}, "manifest.json", "", {"moves", "mixRecipes", "mixResults", "items", "shops"})
+        m = _object(_doc(root, "manifest.json"), {"schemaVersion", "catalogs", "maps", "encounters", "assets"}, "manifest.json", "", {"moves", "mixRecipes", "mixResults", "items", "shops", "events"})
         catalog_paths = [_valid_path(v, ".json", "manifest.json", f"/catalogs/{i}") for i, v in enumerate(_array(m["catalogs"], "manifest.json", "/catalogs"))]
         map_paths = [_valid_path(v, ".json", "manifest.json", f"/maps/{i}") for i, v in enumerate(_array(m["maps"], "manifest.json", "/maps"))]
         encounter_paths = [_valid_path(v, ".json", "manifest.json", f"/encounters/{i}") for i, v in enumerate(_array(m["encounters"], "manifest.json", "/encounters"))]
@@ -450,11 +448,12 @@ def load_project(path: os.PathLike[str] | str, kernel_path: os.PathLike[str] | s
         result_paths = [_valid_path(v, ".json", "manifest.json", f"/mixResults/{i}") for i, v in enumerate(_array(m.get("mixResults", []), "manifest.json", "/mixResults"))]
         item_paths = [_valid_path(v, ".json", "manifest.json", f"/items/{i}") for i, v in enumerate(_array(m.get("items", []), "manifest.json", "/items"))]
         shop_paths = [_valid_path(v, ".json", "manifest.json", f"/shops/{i}") for i, v in enumerate(_array(m.get("shops", []), "manifest.json", "/shops"))]
-        all_docs = catalog_paths + map_paths + encounter_paths + move_paths + recipe_paths + result_paths + item_paths + shop_paths
+        event_paths = [_valid_path(v, ".json", "manifest.json", f"/events/{i}") for i, v in enumerate(_array(m.get("events", []), "manifest.json", "/events"))]
+        all_docs = catalog_paths + map_paths + encounter_paths + move_paths + recipe_paths + result_paths + item_paths + shop_paths + event_paths
         if len(all_docs) > MAX_FILES:
             _fail("file-count", "manifest.json", "", "manifest references more than 64 files")
         _unique(all_docs, "manifest.json", "", "manifest path")
-        catalog_paths.sort(); map_paths.sort(); encounter_paths.sort(); move_paths.sort(); recipe_paths.sort(); result_paths.sort(); item_paths.sort(); shop_paths.sort()
+        catalog_paths.sort(); map_paths.sort(); encounter_paths.sort(); move_paths.sort(); recipe_paths.sort(); result_paths.sort(); item_paths.sort(); shop_paths.sort(); event_paths.sort()
         assets: list[Asset] = []
         asset_values = _array(m["assets"], "manifest.json", "/assets")
         for i, raw_asset in enumerate(asset_values):
@@ -703,8 +702,36 @@ def load_project(path: os.PathLike[str] | str, kernel_path: os.PathLike[str] | s
                         rel, "", {"itemRewards"})
             entries: list[EncounterEntry] = []
             for i, raw in enumerate(_array(d["entries"], rel, "/entries")):
-                e = _object(raw, {"species", "level"}, rel, f"/entries/{i}")
-                entries.append(EncounterEntry(SpeciesId(_id(e["species"], rel, f"/entries/{i}/species")), _uint(e["level"], 1, 200, rel, f"/entries/{i}/level")))
+                pointer = f"/entries/{i}"
+                e = _object(raw, {"species"}, rel, pointer,
+                            {"level", "weight", "minLevel", "maxLevel"})
+                species = SpeciesId(_id(e["species"], rel, pointer + "/species"))
+                weight = _uint(e.get("weight", 1), 1, 10000,
+                               rel, pointer + "/weight")
+                has_level = "level" in e
+                has_range = "minLevel" in e or "maxLevel" in e
+                if has_level and has_range:
+                    _fail("encounter-level", rel, pointer,
+                          "level cannot be combined with minLevel or maxLevel")
+                if has_range and not ("minLevel" in e and "maxLevel" in e):
+                    _fail("encounter-level", rel, pointer,
+                          "minLevel and maxLevel must be provided together")
+                if has_level:
+                    level = _uint(e["level"], 1, 200, rel, pointer + "/level")
+                    entries.append(EncounterEntry(species, level, weight,
+                                                  level, level))
+                elif has_range:
+                    minimum = _uint(e["minLevel"], 1, 200,
+                                    rel, pointer + "/minLevel")
+                    maximum = _uint(e["maxLevel"], 1, 200,
+                                    rel, pointer + "/maxLevel")
+                    if minimum > maximum:
+                        _fail("encounter-level", rel, pointer + "/maxLevel",
+                              "maxLevel must be at least minLevel")
+                    entries.append(EncounterEntry(species, None, weight,
+                                                  minimum, maximum))
+                else:
+                    entries.append(EncounterEntry(species, None, weight, 1, 200))
             item_rewards: list[ItemReward] = []
             for i, raw in enumerate(_array(d.get("itemRewards", []), rel,
                                             "/itemRewards")):
@@ -727,18 +754,8 @@ def load_project(path: os.PathLike[str] | str, kernel_path: os.PathLike[str] | s
                   "more than 4096 encounter entries and item rewards")
         _unique([str(e.id) for e, _ in encounters_loc], "manifest.json", "/encounters", "encounter ID")
 
-        maps_loc: list[tuple[MapRecord, str]] = []
-        total_refs = 0
-        for rel in map_paths:
-            d = _object(_doc(root, rel), {"schemaVersion", "id", "name", "width", "height", "encounters"}, rel, "")
-            refs = tuple(EncounterId(_id(v, rel, f"/encounters/{i}")) for i, v in enumerate(_array(d["encounters"], rel, "/encounters")))
-            _unique([str(v) for v in refs], rel, "/encounters", "encounter reference")
-            total_refs += len(refs)
-            maps_loc.append((MapRecord(MapId(_id(d["id"], rel, "/id")), _string(d["name"], rel, "/name"),
-                                       _uint(d["width"], 0, 2**32 - 1, rel, "/width"), _uint(d["height"], 0, 2**32 - 1, rel, "/height"), refs), rel))
-        if total_refs > MAX_TOTAL_REFS:
-            _fail("reference-limit", "manifest.json", "/maps", "more than 4096 map references")
-        _unique([str(v.id) for v, _ in maps_loc], "manifest.json", "/maps", "map ID")
+        event_locations, maps_loc = parse_world_content(
+            root, map_paths, event_paths)
 
         assets.sort(key=lambda v: str(v.id)); catalogs.sort(key=lambda v: str(v.id)); species_locations.sort(key=lambda v: str(v[0].id)); encounters_loc.sort(key=lambda v: str(v[0].id)); maps_loc.sort(key=lambda v: str(v[0].id))
         asset_index = {str(v.id): i for i, v in enumerate(assets)}
@@ -751,7 +768,7 @@ def load_project(path: os.PathLike[str] | str, kernel_path: os.PathLike[str] | s
         for encounter, _ in encounters_loc:
             tokens.append(len(encounter.entries))
             for entry in encounter.entries:
-                tokens += [species_index.get(str(entry.species), len(species_locations)), entry.level]
+                tokens += [species_index.get(str(entry.species), len(species_locations)), entry.min_level]
         tokens += [len(maps_loc)]
         for map_record, _ in maps_loc:
             tokens += [map_record.width, map_record.height, len(map_record.encounters)]
@@ -760,7 +777,7 @@ def load_project(path: os.PathLike[str] | str, kernel_path: os.PathLike[str] | s
         _kernel(tokens, kernel_path or Path(__file__).resolve().parents[2] / "build/content-kernel",
                 species_locations, encounters_loc, maps_loc, project)
 
-        canonical_project = dict(p)
+        canonical_project = dict(project_document)
         if capacity_tiers:
             canonical_project["capacityTiers"] = [_capacity_value(t) for t in capacity_tiers]
         canonical = {"project": canonical_project, "assets": [dict(id=str(a.id), path=a.path, mediaType=a.media_type, bytes=a.bytes, sha256=a.sha256) for a in assets],
@@ -772,11 +789,55 @@ def load_project(path: os.PathLike[str] | str, kernel_path: os.PathLike[str] | s
                                              sorted(s.evolutions, key=lambda rule: rule.id)]}
                              if s.evolutions else {})}
                          for s in sorted(c.species, key=lambda x: str(x.id))]} for c in catalogs],
-                     "encounters": [{"schemaVersion": SCHEMA, "id": str(e.id), "entries": [{"species": str(x.species), "level": x.level} for x in e.entries],
+                     "encounters": [{"schemaVersion": SCHEMA, "id": str(e.id), "entries": [
+                                         ({"species": str(x.species), "level": x.level}
+                                          if x.level is not None and x.weight == 1 else
+                                          ({"species": str(x.species), "level": x.level,
+                                            "weight": x.weight} if x.level is not None else
+                                           {"species": str(x.species), "weight": x.weight,
+                                            **({"minLevel": x.min_level,
+                                                "maxLevel": x.max_level}
+                                               if (x.min_level, x.max_level) != (1, 200)
+                                               else {})}))
+                                         for x in e.entries],
                                      **({"itemRewards": [{"item": str(x.item), "quantity": x.quantity}
                                                         for x in e.item_rewards]}
                                         if e.item_rewards else {})} for e, _ in encounters_loc],
-                     "maps": [{"schemaVersion": SCHEMA, "id": str(v.id), "name": v.name, "width": v.width, "height": v.height, "encounters": list(v.encounters)} for v, _ in maps_loc]}
+                     "maps": [{"schemaVersion": SCHEMA, "id": str(v.id), "name": v.name,
+                               "width": v.width, "height": v.height,
+                               "encounters": [str(item) for item in v.encounters],
+                               **({"navigation": {
+                                   "vertices": [{"x": vertex.x, "y": vertex.y, "z": vertex.z}
+                                                for vertex in v.navigation.vertices],
+                                   "faces": [[face.a, face.b, face.c] for face in v.navigation.faces],
+                                   "links": [{"from_face": link.from_face,
+                                              "to_face": link.to_face}
+                                             for link in v.navigation.links]}}
+                                  if v.navigation is not None else {}),
+                               **({"npcs": [{"id": str(npc.id), "name": npc.name,
+                                             "x": npc.x, "y": npc.y, "z": npc.z,
+                                             **({"event": str(npc.event)}
+                                                if npc.event is not None else {})}
+                                            for npc in sorted(v.npcs, key=lambda x: str(x.id))]}
+                                  if v.npcs else {}),
+                               **({"triggers": [{"id": str(trigger.id),
+                                                 "event": str(trigger.event),
+                                                 "vertices": list(trigger.vertices)}
+                                                for trigger in sorted(v.triggers, key=lambda x: str(x.id))]}
+                                  if v.triggers else {}),
+                               **({"encounterRegions": [{"id": region.id,
+                                                         "encounter": str(region.encounter),
+                                                         "faces": list(region.faces)}
+                                                        for region in sorted(v.encounter_regions, key=lambda x: x.id)]}
+                                  if v.encounter_regions else {}),
+                               **({"transitions": [{"id": transition.id,
+                                                    "targetMap": str(transition.target_map),
+                                                    "vertices": list(transition.vertices),
+                                                    "x": transition.x, "y": transition.y,
+                                                    "z": transition.z}
+                                                   for transition in sorted(v.transitions, key=lambda x: x.id)]}
+                                  if v.transitions else {})}
+                              for v, _ in maps_loc]}
         if moves:
             canonical["moves"] = [{"schemaVersion": SCHEMA, "id": str(v.id), "name": v.name,
                                     **({"alwaysHit": True} if v.always_hit else {"accuracy": v.accuracy}),
@@ -809,10 +870,51 @@ def load_project(path: os.PathLike[str] | str, kernel_path: os.PathLike[str] | s
             canonical["shops"] = [{"schemaVersion": SCHEMA, "id": v.id,
                                    "name": v.name, "items": [str(item) for item in v.items]}
                                   for v in shops]
+        if event_locations:
+            canonical["events"] = [{"schemaVersion": SCHEMA, "id": str(graph.id),
+                                     "entry": graph.entry,
+                                     "nodes": [{"id": node.id, "op": node.opcode,
+                                                **dict(node.arguments),
+                                                "next": list(node.next)}
+                                               for node in graph.nodes]}
+                                    for graph, _ in sorted(event_locations,
+                                                          key=lambda pair: str(pair[0].id))]
         canonical_bytes = json.dumps(canonical, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
-        return LoadedProject(project, tuple(assets), tuple(catalogs), tuple(v[0] for v in species_locations),
-                             tuple(v[0] for v in encounters_loc), tuple(v[0] for v in maps_loc), tuple(moves),
-                             tuple(mix_recipes), tuple(mix_results), tuple(items), tuple(shops), canonical_bytes,
-                             hashlib.sha256(canonical_bytes).hexdigest())
+        loaded = LoadedProject(project, tuple(assets), tuple(catalogs), tuple(v[0] for v in species_locations),
+                               tuple(v[0] for v in encounters_loc), tuple(v[0] for v in maps_loc), tuple(moves),
+                               tuple(mix_recipes), tuple(mix_results), tuple(items), tuple(shops), canonical_bytes,
+                               hashlib.sha256(canonical_bytes).hexdigest(),
+                               tuple(graph for graph, _ in sorted(event_locations,
+                                                                 key=lambda pair: str(pair[0].id))))
+        try:
+            validate_world_records(loaded)
+        except WorldRecordError as error:
+            message = str(error)
+            file, pointer, entity_id = "manifest.json", "/maps", None
+            for map_record, source_file in maps_loc:
+                map_id = str(map_record.id)
+                entity_ids = {map_id, *(str(row.id) for row in map_record.npcs),
+                              *(str(row.id) for row in map_record.triggers),
+                              *(row.id for row in map_record.encounter_regions),
+                              *(row.id for row in map_record.transitions)}
+                matched = next((identity for identity in sorted(entity_ids,
+                                                                key=lambda value: (-len(value), value))
+                               if identity in message), None)
+                if matched is not None:
+                    file, entity_id = source_file, matched
+                    pointer = ("/navigation" if "navigation" in message or "face" in message
+                               else "/transitions" if "transition" in message
+                               else "/encounterRegions" if "encounter region" in message
+                               else "/triggers" if "trigger" in message
+                               else "/npcs")
+                    break
+            if file == "manifest.json":
+                for graph, source_file in event_locations:
+                    if str(graph.id) in message:
+                        file, pointer, entity_id = source_file, "/nodes", str(graph.id)
+                        break
+            raise ContentError([Diagnostic("world-validation", file, pointer,
+                                            entity_id, message)]) from None
+        return loaded
     finally:
         root.close()

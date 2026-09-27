@@ -1,0 +1,7 @@
+{
+  "schemaVersion": "content-0",
+  "id": "sample:overworld",
+  "name": "First Route",
+  "ruleset": "unassigned",
+  "entryMap": "sample:grove"
+}

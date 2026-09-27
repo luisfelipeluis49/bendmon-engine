@@ -24,6 +24,9 @@ import ./engine/progression/core.bend as Progression
 import ./engine/economy/core.bend as Economy
 import ./engine/economy/roster.bend as EconomyRoster
 import ./engine/m7/rewards.bend as M7Rewards
+import ./engine/world/encounters.bend as WorldEncounters
+import ./engine/world/geometry.bend as WorldGeometry
+import ./engine/world/events.bend as WorldEvents
 
 # BOOT-1: adding zero preserves the headless accumulator for every Nat state.
 # This is a toolchain/bootstrap law, not a battle or progression specification.
@@ -420,6 +423,70 @@ law reward_draw_preserves_transaction:
       Economy.State{Economy.Capacity{1n, 1n, 1n, 1n, 1n, 1n},
         0n, 0n, 0n, 0n, 0n, []}, Progression.RewardLedger{[]}}
     : M7Rewards.TransactionResult}
+
+
+# WORLD-WEIGHT: the accepted movement modes retain their exact quarter-unit
+# encounter multipliers; renderer cadence cannot change these values.
+law world_encounter_weights:
+  {Bool.and(Nat.is_eq(WorldEncounters.weight(WorldEncounters.Walk{}), 3n),
+    Bool.and(Nat.is_eq(WorldEncounters.weight(WorldEncounters.Run{}), 4n),
+      Nat.is_eq(WorldEncounters.weight(WorldEncounters.Sprint{}), 6n)))
+    == True{} : Bool}
+
+
+# M8-GEOMETRY-BOUND: signed Q10 coordinates stop at half a world unit beyond
+# the origin; the immediately larger magnitude is rejected by the production
+# coordinate validator.
+law world_geometry_coordinate_bound:
+  {Bool.and(WorldGeometry.valid_coord(WorldGeometry.Coord{False{}, 524288}),
+    Bool.not(WorldGeometry.valid_coord(WorldGeometry.Coord{False{}, 524289})))
+    == True{} : Bool}
+
+# M8-GEOMETRY-ATOMIC: an invalid elevation gate rejects movement with the
+# caller's original point and zero travel, as required by resolve_elevation.
+law world_geometry_rejection_preserves_start:
+  {WorldGeometry.resolve_elevation(False{},
+      WorldGeometry.NavSurface{[], [], []},
+      WorldGeometry.Point{WorldGeometry.Coord{False{}, 0},
+        WorldGeometry.Coord{False{}, 0}, WorldGeometry.Coord{False{}, 0}},
+      WorldGeometry.Point{WorldGeometry.Coord{False{}, 1024},
+        WorldGeometry.Coord{False{}, 0}, WorldGeometry.Coord{False{}, 0}}, 9)
+    == WorldGeometry.Motion{
+      WorldGeometry.Point{WorldGeometry.Coord{False{}, 0},
+        WorldGeometry.Coord{False{}, 0}, WorldGeometry.Coord{False{}, 0}},
+      0, False{}, []} : WorldGeometry.Motion}
+
+# M8-EVENT-ATOMIC: a SetValue that exceeds the byte budget aborts against the
+# original world. The journaled write is committed only after its budget check.
+law world_event_byte_budget_rolls_back:
+  {WorldEvents.start(
+      [WorldEvents.Node{0n, WorldEvents.SetValue{4n, 9n}, []}], 0n,
+      WorldEvents.World{[], []},
+      WorldEvents.Limits{1n, 1n, 1n, 1n, 0n}) ==
+    WorldEvents.Aborted{WorldEvents.World{[], []}, WorldEvents.ByteLimit{},
+      WorldEvents.Usage{1n, 1n, 0n, 0n, 0n}} : WorldEvents.EventResult}
+
+# M8-ENCOUNTER-THRESHOLD: thresholds below the authored quarter-unit floor are
+# rejected before any distance can change the meter or its RNG state.
+law world_encounter_invalid_threshold_preserves_meter:
+  {WorldEncounters.advance(
+      WorldEncounters.Meter{Some{7n}, 0n, 1n, 0n,
+        Rng.RngState{1, 2, 3, 4}},
+      0n, WorldEncounters.Walk{}) ==
+    WorldEncounters.MeterRejected{
+      WorldEncounters.Meter{Some{7n}, 0n, 1n, 0n,
+        Rng.RngState{1, 2, 3, 4}}} : WorldEncounters.MeterResult}
+
+# M8-ENCOUNTER-REJECT: movement beyond the validated distance ceiling leaves
+# the encounter meter and its RNG state unchanged.
+law world_encounter_invalid_distance_preserves_meter:
+  {WorldEncounters.advance(
+      WorldEncounters.Meter{Some{7n}, 12n, 98304n, 4n,
+        Rng.RngState{1, 2, 3, 4}},
+      524289n, WorldEncounters.Run{}) ==
+    WorldEncounters.MeterRejected{
+      WorldEncounters.Meter{Some{7n}, 12n, 98304n, 4n,
+        Rng.RngState{1, 2, 3, 4}}} : WorldEncounters.MeterResult}
 
 
 # Approved future proof obligations (2026-09-21 decision packet):

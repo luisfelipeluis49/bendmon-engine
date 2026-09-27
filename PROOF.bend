@@ -149,3 +149,21 @@ def Laws.captured_duplicate_identity_rejection():
 
 def Laws.reward_draw_preserves_transaction():
   {==}
+
+def Laws.world_encounter_weights():
+  {==}
+
+def Laws.world_geometry_coordinate_bound():
+  {==}
+
+def Laws.world_geometry_rejection_preserves_start():
+  {==}
+
+def Laws.world_event_byte_budget_rolls_back():
+  {==}
+
+def Laws.world_encounter_invalid_threshold_preserves_meter():
+  {==}
+
+def Laws.world_encounter_invalid_distance_preserves_meter():
+  {==}

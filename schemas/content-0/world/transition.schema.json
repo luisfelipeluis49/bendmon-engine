@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema", "$id": "content-0/world/transition.schema.json",
+  "title": "Content-0 map transition", "type": "object", "additionalProperties": false,
+  "required": ["id", "targetMap", "vertices", "x", "y", "z"],
+  "properties": {
+    "id": {"$ref": "../map.schema.json#/$defs/id"},
+    "targetMap": {"$ref": "../map.schema.json#/$defs/id"},
+    "vertices": {"type": "array", "minItems": 3, "maxItems": 256, "uniqueItems": true, "items": {"type": "integer", "minimum": 0, "maximum": 255}},
+    "x": {"type": "integer", "minimum": -524288, "maximum": 524288},
+    "y": {"type": "integer", "minimum": -524288, "maximum": 524288},
+    "z": {"type": "integer", "minimum": -524288, "maximum": 524288}
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema", "$id": "content-0/world/trigger.schema.json",
+  "title": "Content-0 trigger", "type": "object", "additionalProperties": false,
+  "required": ["id", "event", "vertices"],
+  "properties": {
+    "id": {"$ref": "../map.schema.json#/$defs/id"},
+    "event": {"$ref": "../map.schema.json#/$defs/id"},
+    "vertices": {"type": "array", "minItems": 3, "maxItems": 256, "uniqueItems": true, "items": {"type": "integer", "minimum": 0, "maximum": 255}}
+  }
+}

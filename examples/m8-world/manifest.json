@@ -1,0 +1,16 @@
+{
+  "schemaVersion": "content-0",
+  "catalogs": ["data/catalog.json"],
+  "maps": ["data/grove.json"],
+  "encounters": ["data/grove-encounter.json"],
+  "events": ["data/greeting.json"],
+  "assets": [
+    {
+      "id": "sample:pixel",
+      "path": "assets/pixel.ppm",
+      "mediaType": "image/x-portable-pixmap",
+      "bytes": 14,
+      "sha256": "d7ebafa2a08b2f6547c9df2ed2ea85cb4a3cfb8d3b763aed6a90488f08ee4568"
+    }
+  ]
+}

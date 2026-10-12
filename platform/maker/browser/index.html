@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Monster RPG Maker</title>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div><strong>Monster RPG Maker</strong><span class="subtitle">Content-0 creator workspace</span></div>
+    <div class="top-actions">
+      <select id="projects" aria-label="Open project"></select>
+      <button id="create" type="button">New project</button>
+      <label id="new-project-field" hidden>Project name <input id="new-project-name" maxlength="128" value="New adventure"></label>
+      <button id="create-action" type="button" hidden>Create</button>
+      <button id="undo" type="button" title="Undo (Ctrl+Z)">Undo</button>
+      <button id="redo" type="button" title="Redo (Ctrl+Shift+Z)">Redo</button>
+      <button id="save" type="button">Save draft</button>
+      <button id="validate" type="button">Validate</button>
+      <button id="playtest" type="button">Playtest</button>
+      <button id="export" type="button">Export</button>
+    </div>
+  </header>
+  <main class="workspace">
+    <nav class="sidebar" aria-label="Creator tools">
+      <h2>Build</h2>
+      <button data-tool="map" class="active">Map</button>
+      <button data-tool="catalog">Monsters</button>
+      <button data-tool="moves">Moves &amp; mixes</button>
+      <button data-tool="encounters">Encounters</button>
+      <button data-tool="trainers">Trainers &amp; NPCs</button>
+      <button data-tool="story">Dialogue &amp; events</button>
+      <button data-tool="items">Items &amp; shops</button>
+      <button data-tool="assets">Assets &amp; audio</button>
+      <button data-tool="project">Project</button>
+      <div class="sidebar-note">Changes stay in a draft until validation succeeds. A playtest freezes the validated content and seed.</div>
+    </nav>
+    <section class="center" aria-label="Editor">
+      <div class="section-head"><h1 id="section-title">Map</h1><span id="dirty" aria-live="polite"></span></div>
+      <div id="editor"></div>
+    </section>
+    <aside class="inspector" aria-label="Inspector and validation">
+      <h2>Inspector</h2>
+      <div id="inspector-content">Select something to edit.</div>
+      <h2>Validation</h2>
+      <div id="validation" role="status" aria-live="polite">Validate to check the draft.</div>
+    </aside>
+  </main>
+  <section id="playtest-panel" class="playtest-panel" hidden aria-label="Playtest">
+    <div class="section-head"><h2>Playtest</h2><button id="close-playtest">Close</button></div>
+    <p>Choose the game's Wait pacing and four canonical RNG words for this run.</p>
+    <label class="field">Wait pacing
+      <select id="playtest-wait"><option value="30">30 ticks · action-like</option><option value="60" selected>60 ticks · balanced</option><option value="120">120 ticks · turn-like</option></select>
+    </label>
+    <div class="grid" id="rng-fields">
+      <label class="field">RNG word A<input type="number" min="0" max="4294967295" step="1" value="1"></label>
+      <label class="field">RNG word B<input type="number" min="0" max="4294967295" step="1" value="2"></label>
+      <label class="field">RNG word C<input type="number" min="0" max="4294967295" step="1" value="3"></label>
+      <label class="field">RNG word D<input type="number" min="0" max="4294967295" step="1" value="4"></label>
+    </div>
+    <button id="launch-playtest" type="button">Start validated run</button>
+    <div id="playtest-content" role="status" aria-live="polite"></div>
+    <div id="playtest-live" hidden>
+      <canvas id="playtest-scene" width="840" height="420" aria-label="2.5D playtest scene"></canvas>
+      <p id="playtest-status" role="status" aria-live="polite"></p>
+      <div id="playtest-dialogue" class="playtest-dialogue" hidden aria-live="polite">
+        <strong id="playtest-speaker"></strong>
+        <p id="playtest-line"></p>
+        <button id="playtest-advance-dialogue" type="button">Next line</button>
+      </div>
+      <div class="playtest-controls" aria-label="Move in playtest">
+        <button type="button" data-playtest-move="north">North</button>
+        <button type="button" data-playtest-move="west">West</button>
+        <button type="button" data-playtest-move="south">South</button>
+        <button type="button" data-playtest-move="east">East</button>
+        <label><input type="checkbox" id="playtest-sprint"> Sprint</label>
+      </div>
+      <div class="playtest-controls">
+        <label>Visible character <select id="playtest-npc"></select></label>
+        <button id="playtest-interact" type="button">Talk / interact</button>
+        <button id="playtest-continue" type="button">Continue event</button>
+        <button id="playtest-yes" type="button">Choose yes</button>
+        <button id="playtest-no" type="button">Choose no</button>
+      </div>
+      <div class="playtest-controls" aria-label="Battle commands">
+        <label>Move <select id="playtest-battle-move"></select></label>
+        <button id="playtest-battle-attack" type="button" data-playtest-battle>Attack</button>
+        <button id="playtest-battle-wait" type="button" data-playtest-battle>Wait</button>
+        <button id="playtest-battle-escape" type="button" data-playtest-battle>Escape</button>
+        <button id="playtest-battle-advance" type="button" data-playtest-battle>Advance battle</button>
+      </div>
+      <p id="playtest-cues" class="json-note"></p>
+    </div>
+  </section>
+  <div id="toast" role="status" aria-live="polite"></div>
+  <script type="module" src="./main.mjs"></script>
+</body>
+</html>

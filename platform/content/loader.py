@@ -18,14 +18,17 @@ from .world import (WorldRecordError, parse_world_content,
                     validate_world_records)
 from .world_limits import (MAX_DEPTH, MAX_ENTITIES, MAX_FILES, MAX_JSON_BYTES,
                            MAX_PATH, MAX_PER_RECORD, MAX_TOTAL_BYTES,
-                           MAX_TOTAL_REFS, MAX_WIRE_BYTES, MAX_WIRE_TOKENS)
+                           MAX_TOTAL_REFS, MAX_WIRE_BYTES, MAX_WIRE_TOKENS,
+                           WORLD_COORD_LIMIT)
 
 from .models import (Asset, AssetId, AudioBinding, CameraProfile, CapacityTier, Catalog, CatalogId, Encounter,
                      EvolutionPredicate, EvolutionRule,
                      EncounterEntry, EncounterId, ItemReward, LoadedProject, MapId,
                      MapRecord, ItemId, ItemRecord, LevelMove, MixRecipe, MixResultDescriptor, MoveId,
-                     MoveRecord, Project, ProjectId, RecipeId, ResultId, TypeId,
+                     MoveEffect, MoveRecord, Project, ProjectId, RecipeId, ResultId, TypeId,
                      ShopId, ShopRecord, Species, SpeciesId, SpeciesProgression,
+                     DialogueId, DialogueLine, DialogueRecord, TrainerId, TrainerRecord,
+                     EntryPoint, BattleStarter,
                      )
 
 SCHEMA = "content-0"
@@ -178,6 +181,144 @@ def _uint(value: Any, low: int, high: int, file: str, pointer: str) -> int:
     if type(value) is not int or not low <= value <= high:
         _fail("integer", file, pointer, f"expected integer in {low}..{high}")
     return value
+
+
+def _sint(value: Any, low: int, high: int, file: str, pointer: str) -> int:
+    if type(value) is not int or not low <= value <= high:
+        _fail("integer", file, pointer, f"expected integer in {low}..{high}")
+    return value
+
+
+def _parse_move_effects(raw: Any, file: str) -> tuple[MoveEffect, ...]:
+    """Decode the closed M4 leaf/conditional subset into inert typed records."""
+    values = _array(raw, file, "/effects", 16)
+    if raw and not 1 <= len(values) <= 16:
+        _fail("move-effects", file, "/effects", "effect program requires 1..16 top-level effects")
+    cost = 0
+
+    def target(value: Any, pointer: str) -> str:
+        if value not in ("source", "target") or type(value) is not str:
+            _fail("move-effects", file, pointer, "expected source or target")
+        return value
+
+    def parse_leaf(value: Any, pointer: str, branch: bool = False) -> MoveEffect:
+        nonlocal cost
+        cost += 1
+        d = _object(value, {"kind", "target"}, file, pointer, {
+            "category", "power", "amount", "fromNode", "numerator", "denominator",
+            "status", "stat", "direction", "magnitude"})
+        kind = d["kind"]
+        to = target(d["target"], pointer + "/target")
+        if kind == "damage":
+            if branch:
+                _fail("move-effects", file, pointer, "damage is unsupported in conditional branches")
+            _object(value, {"kind", "target", "category", "power"}, file, pointer)
+            if d["category"] not in ("physical", "special"):
+                _fail("move-effects", file, pointer + "/category", "expected physical or special")
+            return MoveEffect(kind, to, category=d["category"], power=_uint(d["power"], 1, 200, file, pointer + "/power"))
+        if kind == "heal":
+            _object(value, {"kind", "target", "amount"}, file, pointer)
+            return MoveEffect(kind, to, amount=_uint(d["amount"], 1, 9999, file, pointer + "/amount"))
+        if kind in ("drain", "recoil"):
+            _object(value, {"kind", "target", "fromNode", "numerator", "denominator"}, file, pointer)
+            node = _uint(d["fromNode"], 0, 0, file, pointer + "/fromNode")
+            return MoveEffect(kind, to, from_node=node,
+                numerator=_uint(d["numerator"], 1, 16, file, pointer + "/numerator"),
+                denominator=_uint(d["denominator"], 1, 16, file, pointer + "/denominator"))
+        if kind in ("applyStatus", "removeStatus"):
+            _object(value, {"kind", "target", "status"}, file, pointer)
+            if d["status"] not in ("burn", "poison", "sleep", "stun", "blind"):
+                _fail("move-effects", file, pointer + "/status", "unknown status")
+            return MoveEffect(kind, to, status=d["status"])
+        if kind == "clearStatuses":
+            _object(value, {"kind", "target"}, file, pointer)
+            return MoveEffect(kind, to)
+        if kind == "modifyStat":
+            _object(value, {"kind", "target", "stat", "direction", "magnitude"}, file, pointer)
+            if d["stat"] not in ("attack", "defense", "specialAttack", "specialDefense", "speed", "accuracy", "evasion"):
+                _fail("move-effects", file, pointer + "/stat", "unknown stat")
+            if d["direction"] not in ("raise", "lower"):
+                _fail("move-effects", file, pointer + "/direction", "expected raise or lower")
+            return MoveEffect(kind, to, stat=d["stat"], direction=d["direction"],
+                              magnitude=_uint(d["magnitude"], 1, 6, file, pointer + "/magnitude"))
+        _fail("move-effects", file, pointer + "/kind", "unknown leaf effect")
+
+    result: list[MoveEffect] = []
+    for i, value in enumerate(values):
+        pointer = f"/effects/{i}"
+        if isinstance(value, dict) and value.get("kind") == "conditional":
+            cost += 1
+            d = _object(value, {"kind", "predicate", "then", "else"}, file, pointer)
+            pred = _object(d["predicate"], {"kind"}, file, pointer + "/predicate",
+                           {"target", "status", "node"})
+            pk = pred["kind"]
+            if pk == "hpBelowHalf":
+                _object(d["predicate"], {"kind", "target"}, file, pointer + "/predicate")
+                effect = MoveEffect("conditional", predicate_kind=pk,
+                    predicate_target=target(pred["target"], pointer + "/predicate/target"))
+            elif pk == "hasStatus":
+                _object(d["predicate"], {"kind", "target", "status"}, file, pointer + "/predicate")
+                if pred["status"] not in ("burn", "poison", "sleep", "stun", "blind"):
+                    _fail("move-effects", file, pointer + "/predicate/status", "unknown status")
+                effect = MoveEffect("conditional", predicate_kind=pk,
+                    predicate_target=target(pred["target"], pointer + "/predicate/target"),
+                    predicate_status=pred["status"])
+            elif pk == "priorDamagePositive":
+                _object(d["predicate"], {"kind", "node"}, file, pointer + "/predicate")
+                effect = MoveEffect("conditional", predicate_kind=pk,
+                    predicate_node=_uint(pred["node"], 0, 0, file, pointer + "/predicate/node"))
+            else:
+                _fail("move-effects", file, pointer + "/predicate/kind", "unknown predicate")
+            then_raw = _array(d["then"], file, pointer + "/then", 16)
+            else_raw = _array(d["else"], file, pointer + "/else", 16)
+            then = tuple(parse_leaf(x, f"{pointer}/then/{j}", True) for j, x in enumerate(then_raw))
+            otherwise = tuple(parse_leaf(x, f"{pointer}/else/{j}", True) for j, x in enumerate(else_raw))
+            result.append(MoveEffect("conditional", predicate_kind=effect.predicate_kind,
+                predicate_target=effect.predicate_target,
+                predicate_status=effect.predicate_status,
+                predicate_node=effect.predicate_node, then_effects=then,
+                else_effects=otherwise))
+        else:
+            result.append(parse_leaf(value, pointer))
+    if cost > 64:
+        _fail("move-effects", file, "/effects", "effect program cost exceeds 64")
+    if cost > 16:
+        _fail("move-effects", file, "/effects", "serialized effect node count exceeds 16")
+    damage = [effect for effect in result if effect.kind == "damage"]
+    if len(damage) > 1:
+        _fail("move-effects", file, "/effects", "only one damage effect is supported")
+    if damage and result[0] is not damage[0]:
+        _fail("move-effects", file, "/effects", "damage must be the first top-level effect")
+    needs_damage = any(effect.kind in ("drain", "recoil") or
+                       (effect.kind == "conditional" and effect.predicate_kind == "priorDamagePositive")
+                       for effect in result)
+    if needs_damage and not damage:
+        _fail("move-effects", file, "/effects", "damage references require a preceding damage effect")
+    return tuple(result)
+
+
+def _move_effect_json(effect: MoveEffect) -> dict[str, Any]:
+    if effect.kind == "conditional":
+        if effect.predicate_kind == "hpBelowHalf":
+            predicate = {"kind": effect.predicate_kind, "target": effect.predicate_target}
+        elif effect.predicate_kind == "hasStatus":
+            predicate = {"kind": effect.predicate_kind, "target": effect.predicate_target,
+                         "status": effect.predicate_status}
+        else:
+            predicate = {"kind": effect.predicate_kind, "node": effect.predicate_node}
+        return {"kind": effect.kind, "predicate": predicate,
+                "then": [_move_effect_json(node) for node in effect.then_effects],
+                "else": [_move_effect_json(node) for node in effect.else_effects]}
+    result: dict[str, Any] = {"kind": effect.kind, "target": effect.target}
+    for attr, name in (("category", "category"), ("power", "power"),
+                       ("amount", "amount"), ("from_node", "fromNode"),
+                       ("numerator", "numerator"), ("denominator", "denominator"),
+                       ("status", "status"), ("stat", "stat"),
+                       ("direction", "direction"), ("magnitude", "magnitude")):
+        value = getattr(effect, attr)
+        if value is not None:
+            result[name] = value
+    return result
 
 
 def _species_progression(value: Any, file: str, pointer: str) -> SpeciesProgression:
@@ -509,14 +650,30 @@ def _kernel(tokens: list[int], kernel_path: os.PathLike[str] | str,
 def load_project(path: os.PathLike[str] | str, kernel_path: os.PathLike[str] | str | None = None) -> LoadedProject:
     root = _Root(path)
     try:
-        p = _object(_doc(root, "project.json"), {"schemaVersion", "id", "name", "ruleset", "entryMap"}, "project.json", "", {"capacityTiers"})
+        p = _object(_doc(root, "project.json"), {"schemaVersion", "id", "name", "ruleset", "entryMap"}, "project.json", "", {"capacityTiers", "entryPoint", "starter"})
         project_document = dict(p)
         if p["ruleset"] != "unassigned":
             _fail("ruleset", "project.json", "/ruleset", 'ruleset must be "unassigned"')
         capacity_tiers = _capacity_tiers(p["capacityTiers"]) if "capacityTiers" in p else ()
+        entry_point = None
+        if "entryPoint" in p:
+            raw_point = _object(p["entryPoint"], {"x", "y", "z"},
+                                "project.json", "/entryPoint")
+            coordinates = tuple(_uint(raw_point[axis], -WORLD_COORD_LIMIT,
+                                              WORLD_COORD_LIMIT, "project.json",
+                                              f"/entryPoint/{axis}")
+                                for axis in ("x", "y", "z"))
+            entry_point = EntryPoint(*coordinates)
+        starter = None
+        if "starter" in p:
+            raw_starter = _object(p["starter"], {"species", "level"},
+                                  "project.json", "/starter")
+            starter = BattleStarter(
+                SpeciesId(_id(raw_starter["species"], "project.json", "/starter/species")),
+                _uint(raw_starter["level"], 1, 100, "project.json", "/starter/level"))
         project = Project(ProjectId(_id(p["id"], "project.json", "/id")), _string(p["name"], "project.json", "/name"),
-                          "unassigned", MapId(_id(p["entryMap"], "project.json", "/entryMap")), capacity_tiers)
-        m = _object(_doc(root, "manifest.json"), {"schemaVersion", "catalogs", "maps", "encounters", "assets"}, "manifest.json", "", {"moves", "mixRecipes", "mixResults", "items", "shops", "events", "cameraProfiles", "audioBindings"})
+                          "unassigned", MapId(_id(p["entryMap"], "project.json", "/entryMap")), capacity_tiers, entry_point, starter)
+        m = _object(_doc(root, "manifest.json"), {"schemaVersion", "catalogs", "maps", "encounters", "assets"}, "manifest.json", "", {"moves", "mixRecipes", "mixResults", "items", "shops", "events", "cameraProfiles", "audioBindings", "trainers", "dialogues"})
         catalog_paths = [_valid_path(v, ".json", "manifest.json", f"/catalogs/{i}") for i, v in enumerate(_array(m["catalogs"], "manifest.json", "/catalogs"))]
         map_paths = [_valid_path(v, ".json", "manifest.json", f"/maps/{i}") for i, v in enumerate(_array(m["maps"], "manifest.json", "/maps"))]
         encounter_paths = [_valid_path(v, ".json", "manifest.json", f"/encounters/{i}") for i, v in enumerate(_array(m["encounters"], "manifest.json", "/encounters"))]
@@ -526,11 +683,13 @@ def load_project(path: os.PathLike[str] | str, kernel_path: os.PathLike[str] | s
         item_paths = [_valid_path(v, ".json", "manifest.json", f"/items/{i}") for i, v in enumerate(_array(m.get("items", []), "manifest.json", "/items"))]
         shop_paths = [_valid_path(v, ".json", "manifest.json", f"/shops/{i}") for i, v in enumerate(_array(m.get("shops", []), "manifest.json", "/shops"))]
         event_paths = [_valid_path(v, ".json", "manifest.json", f"/events/{i}") for i, v in enumerate(_array(m.get("events", []), "manifest.json", "/events"))]
-        all_docs = catalog_paths + map_paths + encounter_paths + move_paths + recipe_paths + result_paths + item_paths + shop_paths + event_paths
+        trainer_paths = [_valid_path(v, ".json", "manifest.json", f"/trainers/{i}") for i, v in enumerate(_array(m.get("trainers", []), "manifest.json", "/trainers"))]
+        dialogue_paths = [_valid_path(v, ".json", "manifest.json", f"/dialogues/{i}") for i, v in enumerate(_array(m.get("dialogues", []), "manifest.json", "/dialogues"))]
+        all_docs = catalog_paths + map_paths + encounter_paths + move_paths + recipe_paths + result_paths + item_paths + shop_paths + event_paths + trainer_paths + dialogue_paths
         if len(all_docs) > MAX_FILES:
             _fail("file-count", "manifest.json", "", "manifest references more than 64 files")
         _unique(all_docs, "manifest.json", "", "manifest path")
-        catalog_paths.sort(); map_paths.sort(); encounter_paths.sort(); move_paths.sort(); recipe_paths.sort(); result_paths.sort(); item_paths.sort(); shop_paths.sort(); event_paths.sort()
+        catalog_paths.sort(); map_paths.sort(); encounter_paths.sort(); move_paths.sort(); recipe_paths.sort(); result_paths.sort(); item_paths.sort(); shop_paths.sort(); event_paths.sort(); trainer_paths.sort(); dialogue_paths.sort()
         assets: list[Asset] = []
         asset_values = _array(m["assets"], "manifest.json", "/assets")
         for i, raw_asset in enumerate(asset_values):
@@ -632,10 +791,45 @@ def load_project(path: os.PathLike[str] | str, kernel_path: os.PathLike[str] | s
             _fail("entity-limit", "manifest.json", "/shops", "more than 256 shops")
         _unique([str(v.id) for v in shops], "manifest.json", "/shops", "shop ID")
         shops.sort(key=lambda v: str(v.id))
+        trainers: list[TrainerRecord] = []
+        for rel in trainer_paths:
+            d = _object(_doc(root, rel), {"schemaVersion", "id", "name"}, rel, "")
+            trainers.append(TrainerRecord(TrainerId(_id(d["id"], rel, "/id")),
+                                          _string(d["name"], rel, "/name")))
+        if len(trainers) > MAX_ENTITIES:
+            _fail("entity-limit", "manifest.json", "/trainers", "more than 256 trainers")
+        _unique([str(v.id) for v in trainers], "manifest.json", "/trainers", "trainer ID")
+        trainers.sort(key=lambda v: str(v.id))
+        dialogues: list[DialogueRecord] = []
+        total_dialogue_lines = 0
+        for rel in dialogue_paths:
+            d = _object(_doc(root, rel), {"schemaVersion", "id", "lines"}, rel, "")
+            dialogue_id = DialogueId(_id(d["id"], rel, "/id"))
+            lines: list[DialogueLine] = []
+            for i, raw_line in enumerate(_array(d["lines"], rel, "/lines", 64)):
+                ptr = f"/lines/{i}"
+                row = _object(raw_line, {"speaker", "text"}, rel, ptr)
+                speaker = _string(row["speaker"], rel, ptr + "/speaker")
+                text = row["text"]
+                if (not isinstance(text, str) or not text or len(text) > 512 or
+                        any(not c.isprintable() for c in text)):
+                    _fail("dialogue-text", rel, ptr + "/text",
+                          "dialogue text must be 1..512 printable Unicode characters", dialogue_id)
+                lines.append(DialogueLine(speaker, text))
+            if not lines:
+                _fail("dialogue-lines", rel, "/lines", "dialogue requires 1..64 lines", dialogue_id)
+            total_dialogue_lines += len(lines)
+            dialogues.append(DialogueRecord(dialogue_id, tuple(lines)))
+        if len(dialogues) > MAX_ENTITIES:
+            _fail("entity-limit", "manifest.json", "/dialogues", "more than 256 dialogues")
+        if total_dialogue_lines > MAX_TOTAL_REFS:
+            _fail("reference-limit", "manifest.json", "/dialogues", "more than 4096 dialogue lines")
+        _unique([str(v.id) for v in dialogues], "manifest.json", "/dialogues", "dialogue ID")
+        dialogues.sort(key=lambda v: str(v.id))
         moves: list[MoveRecord] = []
         for rel in move_paths:
             raw_move = _doc(root, rel)
-            d = _object(raw_move, {"schemaVersion", "id", "name", "windup", "recovery", "cooldown", "animation"}, rel, "", {"accuracy", "alwaysHit", "components"})
+            d = _object(raw_move, {"schemaVersion", "id", "name", "windup", "recovery", "cooldown", "animation"}, rel, "", {"accuracy", "alwaysHit", "components", "power", "damageCategory", "effects", "priority"})
             mid = MoveId(_id(d["id"], rel, "/id"))
             name = _string(d["name"], rel, "/name")
             has_accuracy, has_always = "accuracy" in d, "alwaysHit" in d
@@ -661,7 +855,21 @@ def load_project(path: os.PathLike[str] | str, kernel_path: os.PathLike[str] | s
                     _fail("mix-components", rel, "/components", "move requires 1 to 4 components", mid)
                 components = tuple(TypeId(_uint(v, 0, 9, rel, f"/components/{i}")) for i, v in enumerate(raw_components))
                 _unique([str(int(v)) for v in components], rel, "/components", "component type")
-            moves.append(MoveRecord(mid, name, accuracy, always_hit, windup, recovery, cooldown, animation, components))
+            power = _uint(d["power"], 1, 200, rel, "/power") if "power" in d else None
+            if "damageCategory" in d and power is None:
+                _fail("damage-category", rel, "/damageCategory", "damage category requires a damaging move (power > 0)", mid)
+            damage_category = d.get("damageCategory", "physical")
+            if damage_category not in ("physical", "special"):
+                _fail("damage-category", rel, "/damageCategory", "expected physical or special", mid)
+            priority = _sint(d.get("priority", 0), -8, 8, rel, "/priority")
+            effects = _parse_move_effects(d.get("effects", []), rel)
+            if "effects" in d and not effects:
+                _fail("move-effects", rel, "/effects", "explicit effect program requires at least one effect", mid)
+            if effects and power is not None:
+                _fail("move-effects", rel, "/effects", "explicit effects cannot be combined with legacy power", mid)
+            if any(effect.kind == "damage" for effect in effects) and components is None:
+                _fail("move-effects", rel, "/components", "damage effect requires type components", mid)
+            moves.append(MoveRecord(mid, name, accuracy, always_hit, windup, recovery, cooldown, animation, components, power, damage_category, effects, priority))
         if len(moves) > MAX_ENTITIES:
             _fail("entity-limit", "manifest.json", "/moves", "more than 256 moves")
         _unique([str(v.id) for v in moves], "manifest.json", "/moves", "move ID")
@@ -742,7 +950,14 @@ def load_project(path: os.PathLike[str] | str, kernel_path: os.PathLike[str] | s
             for i, raw in enumerate(_array(d["species"], rel, "/species")):
                 pointer = f"/species/{i}"
                 s = _object(raw, {"id", "name", "sprite"}, rel, pointer,
-                            {"progression", "levelMoves", "evolutions"})
+                            {"progression", "levelMoves", "evolutions", "types"})
+                combat_types = (TypeId(0),)
+                if "types" in s:
+                    raw_types = _array(s["types"], rel, pointer + "/types", 2)
+                    if not 1 <= len(raw_types) <= 2:
+                        _fail("species-types", rel, pointer + "/types", "species requires 1 or 2 distinct type IDs", s.get("id"))
+                    combat_types = tuple(TypeId(_uint(value, 0, 9, rel, f"{pointer}/types/{j}")) for j, value in enumerate(raw_types))
+                    _unique([str(int(value)) for value in combat_types], rel, pointer + "/types", "species type")
                 progression = (_species_progression(s["progression"], rel,
                                                     pointer + "/progression")
                                if "progression" in s else None)
@@ -769,6 +984,7 @@ def load_project(path: os.PathLike[str] | str, kernel_path: os.PathLike[str] | s
                     progression,
                     tuple(level_moves),
                     evolutions,
+                    combat_types,
                 )
                 ss.append(record); species_locations.append((record, rel, i))
             ss.sort(key=lambda value: str(value.id))
@@ -782,6 +998,13 @@ def load_project(path: os.PathLike[str] | str, kernel_path: os.PathLike[str] | s
         _unique([str(c.id) for c in catalogs], "manifest.json", "/catalogs", "catalog ID")
         _unique([str(s.id) for s, _, _ in species_locations], "manifest.json", "/catalogs", "species ID")
         species_ids = {str(s.id) for s, _, _ in species_locations}
+        if starter is not None:
+            found_starter = next((species for species, _, _ in species_locations
+                                  if species.id == starter.species), None)
+            if found_starter is None or found_starter.progression is None:
+                _fail("reference", "project.json", "/starter/species",
+                      "starter species must resolve to a species with progression",
+                      str(starter.species))
         recipe_ids = {str(recipe.id) for recipe in mix_recipes}
         move_ids = {str(move.id) for move in moves}
         all_rule_ids: list[str] = []
@@ -863,6 +1086,17 @@ def load_project(path: os.PathLike[str] | str, kernel_path: os.PathLike[str] | s
 
         event_locations, maps_loc = parse_world_content(
             root, map_paths, event_paths)
+        trainer_ids = {str(v.id) for v in trainers}
+        dialogue_ids = {str(v.id) for v in dialogues}
+        for map_record, rel in maps_loc:
+            for index, npc in enumerate(map_record.npcs):
+                pointer = f"/npcs/{index}"
+                if npc.trainer is not None and str(npc.trainer) not in trainer_ids:
+                    _fail("reference", rel, pointer + "/trainer",
+                          "NPC trainer metadata reference does not resolve", npc.id)
+                if npc.dialogue is not None and str(npc.dialogue) not in dialogue_ids:
+                    _fail("reference", rel, pointer + "/dialogue",
+                          "NPC dialogue text reference does not resolve", npc.id)
         profile_ids = {v.id for v in camera_profiles}
         asset_by_id = {str(v.id): v for v in assets}
         for map_record, rel in maps_loc:
@@ -915,6 +1149,7 @@ def load_project(path: os.PathLike[str] | str, kernel_path: os.PathLike[str] | s
             canonical_project["capacityTiers"] = [_capacity_value(t) for t in capacity_tiers]
         canonical = {"project": canonical_project, "assets": [dict(id=str(a.id), path=a.path, mediaType=a.media_type, bytes=a.bytes, sha256=a.sha256) for a in assets],
                      "catalogs": [{"schemaVersion": SCHEMA, "id": str(c.id), "species": [{"id": str(s.id), "name": s.name, "sprite": str(s.sprite),
+                          **({"types": [int(value) for value in s.combat_types]} if s.combat_types != (TypeId(0),) else {}),
                           **({"progression": _progression_value(s.progression)} if s.progression is not None else {}),
                           **({"levelMoves": [{"level": entry.level, "move": str(entry.move)}
                                               for entry in s.level_moves]} if s.level_moves else {}),
@@ -951,7 +1186,11 @@ def load_project(path: os.PathLike[str] | str, kernel_path: os.PathLike[str] | s
                                              "x": npc.x, "y": npc.y, "z": npc.z,
                                              **({"sprite": str(npc.sprite)} if npc.sprite is not None else {}),
                                              **({"event": str(npc.event)}
-                                                if npc.event is not None else {})}
+                                                if npc.event is not None else {}),
+                                             **({"trainer": str(npc.trainer)}
+                                                if npc.trainer is not None else {}),
+                                             **({"dialogue": str(npc.dialogue)}
+                                                if npc.dialogue is not None else {})}
                                             for npc in sorted(v.npcs, key=lambda x: str(x.id))]}
                                   if v.npcs else {}),
                                **({"triggers": [{"id": str(trigger.id),
@@ -989,7 +1228,11 @@ def load_project(path: os.PathLike[str] | str, kernel_path: os.PathLike[str] | s
                                     **({"alwaysHit": True} if v.always_hit else {"accuracy": v.accuracy}),
                                     "windup": v.windup, "recovery": v.recovery,
                                     "cooldown": v.cooldown, "animation": str(v.animation),
-                                    **({"components": [int(x) for x in v.components]} if v.components is not None else {})}
+                                    **({"priority": v.priority} if v.priority != 0 else {}),
+                                    **({"power": v.power} if v.power is not None else {}),
+                                    **({"damageCategory": v.damage_category} if v.damage_category != "physical" else {}),
+                                    **({"components": [int(x) for x in v.components]} if v.components is not None else {}),
+                                    **({"effects": [_move_effect_json(effect) for effect in v.effects]} if v.effects else {})}
                                    for v in moves]
         if mix_results:
             canonical["mixResults"] = [{"schemaVersion": SCHEMA, "id": str(v.id), "name": v.name,
@@ -1016,6 +1259,14 @@ def load_project(path: os.PathLike[str] | str, kernel_path: os.PathLike[str] | s
             canonical["shops"] = [{"schemaVersion": SCHEMA, "id": v.id,
                                    "name": v.name, "items": [str(item) for item in v.items]}
                                   for v in shops]
+        if trainers:
+            canonical["trainers"] = [{"schemaVersion": SCHEMA, "id": str(v.id),
+                                      "name": v.name} for v in trainers]
+        if dialogues:
+            canonical["dialogues"] = [{"schemaVersion": SCHEMA, "id": str(v.id),
+                                       "lines": [{"speaker": line.speaker, "text": line.text}
+                                                 for line in v.lines]}
+                                      for v in dialogues]
         if event_locations:
             canonical["events"] = [{"schemaVersion": SCHEMA, "id": str(graph.id),
                                      "entry": graph.entry,
@@ -1033,12 +1284,16 @@ def load_project(path: os.PathLike[str] | str, kernel_path: os.PathLike[str] | s
                                tuple(graph for graph, _ in sorted(event_locations,
                                                                  key=lambda pair: str(pair[0].id))),
                                tuple(sorted(camera_profiles, key=lambda item: item.id)),
-                               tuple(audio_bindings))
+                               tuple(audio_bindings), tuple(trainers), tuple(dialogues))
         try:
             validate_world_records(loaded)
         except WorldRecordError as error:
             message = str(error)
             file, pointer, entity_id = "manifest.json", "/maps", None
+            if message.startswith("project entryPoint:"):
+                raise ContentError([Diagnostic("world-validation", "project.json",
+                                               "/entryPoint", str(project.id),
+                                               message)]) from None
             for map_record, source_file in maps_loc:
                 map_id = str(map_record.id)
                 entity_ids = {map_id, *(str(row.id) for row in map_record.npcs),

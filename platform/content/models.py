@@ -19,6 +19,8 @@ ShopId = NewType("ShopId", str)
 NpcId = NewType("NpcId", str)
 TriggerId = NewType("TriggerId", str)
 EventId = NewType("EventId", str)
+TrainerId = NewType("TrainerId", str)
+DialogueId = NewType("DialogueId", str)
 
 
 @dataclass(frozen=True, slots=True)
@@ -119,6 +121,7 @@ class Species:
     progression: SpeciesProgression | None = None
     level_moves: tuple[LevelMove, ...] = ()
     evolutions: tuple[EvolutionRule, ...] = ()
+    combat_types: tuple[TypeId, ...] = (TypeId(0),)
 
 
 @dataclass(frozen=True, slots=True)
@@ -185,6 +188,28 @@ class NpcRecord:
     z: int
     event: EventId | None = None
     sprite: AssetId | None = None
+    trainer: TrainerId | None = None
+    dialogue: DialogueId | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class TrainerRecord:
+    """Inert trainer identity metadata; battle/training behavior is not encoded."""
+    id: TrainerId
+    name: str
+
+
+@dataclass(frozen=True, slots=True)
+class DialogueLine:
+    speaker: str
+    text: str
+
+
+@dataclass(frozen=True, slots=True)
+class DialogueRecord:
+    """Ordered authored text advanced by the M10 playtest dialogue cursor."""
+    id: DialogueId
+    lines: tuple[DialogueLine, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -253,6 +278,33 @@ class MoveRecord:
     cooldown: int
     animation: AssetId
     components: tuple[TypeId, ...] | None = None
+    power: int | None = None
+    damage_category: str = "physical"
+    effects: tuple[MoveEffect, ...] = ()
+    priority: int = 0
+
+
+@dataclass(frozen=True, slots=True)
+class MoveEffect:
+    """Closed inert effect node; kind-specific values are validated at intake."""
+    kind: str
+    target: str = "target"
+    category: str | None = None
+    power: int | None = None
+    amount: int | None = None
+    from_node: int | None = None
+    numerator: int | None = None
+    denominator: int | None = None
+    status: str | None = None
+    stat: str | None = None
+    direction: str | None = None
+    magnitude: int | None = None
+    predicate_kind: str | None = None
+    predicate_target: str | None = None
+    predicate_status: str | None = None
+    predicate_node: int | None = None
+    then_effects: tuple[MoveEffect, ...] = ()
+    else_effects: tuple[MoveEffect, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -278,12 +330,27 @@ class MixResultDescriptor:
 
 
 @dataclass(frozen=True, slots=True)
+class EntryPoint:
+    x: int
+    y: int
+    z: int
+
+
+@dataclass(frozen=True, slots=True)
+class BattleStarter:
+    species: SpeciesId
+    level: int
+
+
+@dataclass(frozen=True, slots=True)
 class Project:
     id: ProjectId
     name: str
     ruleset: str
     entry_map: MapId
     capacity_tiers: tuple[CapacityTier, ...] = ()
+    entry_point: EntryPoint | None = None
+    starter: BattleStarter | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -304,3 +371,5 @@ class LoadedProject:
     events: tuple[EventGraph, ...] = ()
     camera_profiles: tuple[CameraProfile, ...] = ()
     audio_bindings: tuple[AudioBinding, ...] = ()
+    trainers: tuple[TrainerRecord, ...] = ()
+    dialogues: tuple[DialogueRecord, ...] = ()

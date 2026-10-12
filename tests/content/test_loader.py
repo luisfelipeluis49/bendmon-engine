@@ -56,6 +56,81 @@ class LoaderTests(unittest.TestCase):
         with self.assertRaisesRegex(Exception, "cannot assign"):
             loaded.project.name = "changed"  # type: ignore[misc]
 
+    def test_inert_trainer_and_dialogue_records_are_typed_hashed_and_ordered(self) -> None:
+        manifest_path = self.root / "manifest.json"
+        manifest = json.loads(manifest_path.read_text())
+        manifest["trainers"] = ["data/trainer.json"]
+        manifest["dialogues"] = ["data/dialogue.json"]
+        write_json(manifest_path, manifest)
+        write_json(self.root / "data/trainer.json", {
+            "schemaVersion": "content-0", "id": "demo:trainer", "name": "Mira"})
+        write_json(self.root / "data/dialogue.json", {
+            "schemaVersion": "content-0", "id": "demo:greeting",
+            "lines": [{"speaker": "Mira", "text": "Welcome."},
+                      {"speaker": "Mira", "text": "Take a look around."}]})
+        loaded = load_project(self.root, self.kernel)
+        self.assertEqual(loaded.trainers[0].name, "Mira")
+        self.assertEqual([line.text for line in loaded.dialogues[0].lines],
+                         ["Welcome.", "Take a look around."])
+        canonical = json.loads(loaded.canonical_json)
+        self.assertEqual(canonical["trainers"][0]["id"], "demo:trainer")
+        self.assertEqual(canonical["dialogues"][0]["lines"][1]["text"],
+                         "Take a look around.")
+        original_hash = loaded.content_hash
+        dialogue = json.loads((self.root / "data/dialogue.json").read_text())
+        dialogue["lines"].reverse()
+        write_json(self.root / "data/dialogue.json", dialogue)
+        self.assertNotEqual(original_hash, load_project(self.root, self.kernel).content_hash)
+
+    def test_npc_trainer_and_dialogue_references_resolve_against_typed_records(self) -> None:
+        manifest = json.loads((self.root / "manifest.json").read_text())
+        manifest["trainers"] = ["data/trainer.json"]
+        manifest["dialogues"] = ["data/dialogue.json"]
+        write_json(self.root / "manifest.json", manifest)
+        write_json(self.root / "data/trainer.json", {
+            "schemaVersion": "content-0", "id": "demo:trainer", "name": "Mira"})
+        write_json(self.root / "data/dialogue.json", {
+            "schemaVersion": "content-0", "id": "demo:greeting",
+            "lines": [{"speaker": "Mira", "text": "Hello."}]})
+        map_path = self.root / "data/map.json"
+        map_doc = json.loads(map_path.read_text())
+        map_doc["navigation"] = {
+            "vertices": [{"x": 0, "y": 0, "z": 0},
+                         {"x": 1024, "y": 0, "z": 0},
+                         {"x": 0, "y": 0, "z": 1024}],
+            "faces": [[0, 1, 2]], "links": []}
+        map_doc["npcs"] = [{"id": "demo:mira", "name": "Mira", "x": 128,
+                            "y": 0, "z": 128, "trainer": "demo:trainer",
+                            "dialogue": "demo:greeting"}]
+        write_json(map_path, map_doc)
+        loaded = load_project(self.root, self.kernel)
+        npc = loaded.maps[0].npcs[0]
+        self.assertEqual(str(npc.trainer), "demo:trainer")
+        self.assertEqual(str(npc.dialogue), "demo:greeting")
+        for kind in ("trainer", "dialogue"):
+            map_doc["npcs"][0][kind] = "demo:missing"
+            write_json(map_path, map_doc)
+            with self.subTest(kind=kind):
+                with self.assertRaises(ContentError) as caught:
+                    load_project(self.root, self.kernel)
+                self.assertEqual(caught.exception.diagnostics[0].pointer,
+                                 f"/npcs/0/{kind}")
+            map_doc["npcs"][0][kind] = f"demo:{'trainer' if kind == 'trainer' else 'greeting'}"
+
+    def test_dialogue_rejects_empty_or_oversized_text(self) -> None:
+        manifest = json.loads((self.root / "manifest.json").read_text())
+        manifest["dialogues"] = ["data/dialogue.json"]
+        write_json(self.root / "manifest.json", manifest)
+        dialogue_path = self.root / "data/dialogue.json"
+        for text, pointer in (("", "/lines/0/text"), ("x" * 513, "/lines/0/text")):
+            write_json(dialogue_path, {"schemaVersion": "content-0",
+                                      "id": "demo:greeting",
+                                      "lines": [{"speaker": "Mira", "text": text}]})
+            with self.subTest(length=len(text)):
+                with self.assertRaises(ContentError) as caught:
+                    load_project(self.root, self.kernel)
+                self.assertEqual(caught.exception.diagnostics[0].pointer, pointer)
+
     def test_encounter_level_rejects_values_outside_playable_range(self) -> None:
         path = self.root / "data/encounter.json"
         encounter = json.loads(path.read_text())
@@ -337,6 +412,60 @@ class LoaderTests(unittest.TestCase):
         self.assertEqual(loaded.moves[0].accuracy, 500)
         self.assertEqual((loaded.moves[0].windup, loaded.moves[0].recovery,
                           loaded.moves[0].cooldown), (0, 30, 60))
+        self.assertEqual(loaded.moves[0].damage_category, "physical")
+
+    def test_additive_combat_authoring_defaults_and_validates(self) -> None:
+        catalog = json.loads((self.root / "data/catalog.json").read_text())
+        catalog["species"][0]["types"] = [3, 7]
+        write_json(self.root / "data/catalog.json", catalog)
+        move = {"schemaVersion": "content-0", "id": "demo:quick", "name": "Quick",
+                "accuracy": 500, "windup": 0, "recovery": 30, "cooldown": 60,
+                "animation": "demo:pixel", "power": 80, "damageCategory": "special"}
+        write_json(self.root / "data/move.json", move)
+        manifest = json.loads((self.root / "manifest.json").read_text())
+        manifest["moves"] = ["data/move.json"]
+        write_json(self.root / "manifest.json", manifest)
+        loaded = load_project(self.root, self.kernel)
+        self.assertEqual(tuple(map(int, loaded.species[0].combat_types)), (3, 7))
+        self.assertEqual(loaded.moves[0].damage_category, "special")
+        canonical = json.loads(loaded.canonical_json)
+        self.assertEqual(canonical["catalogs"][0]["species"][0]["types"], [3, 7])
+        self.assertEqual(canonical["moves"][0]["damageCategory"], "special")
+        catalog["species"][0]["types"] = [3, 3]
+        write_json(self.root / "data/catalog.json", catalog)
+        with self.assertRaises(ContentError):
+            load_project(self.root, self.kernel)
+        catalog["species"][0]["types"] = [10]
+        write_json(self.root / "data/catalog.json", catalog)
+        with self.assertRaises(ContentError):
+            load_project(self.root, self.kernel)
+        catalog["species"][0].pop("types")
+        write_json(self.root / "data/catalog.json", catalog)
+        move["damageCategory"] = "status"
+        write_json(self.root / "data/move.json", move)
+        with self.assertRaises(ContentError):
+            load_project(self.root, self.kernel)
+        move.pop("power")
+        write_json(self.root / "data/move.json", move)
+        with self.assertRaises(ContentError):
+            load_project(self.root, self.kernel)
+
+    def test_optional_move_power_is_bounded_and_bound_into_digest(self) -> None:
+        move = {"schemaVersion": "content-0", "id": "demo:quick", "name": "Quick",
+                "accuracy": 500, "windup": 0, "recovery": 30, "cooldown": 60,
+                "animation": "demo:pixel", "power": 200}
+        write_json(self.root / "data/move.json", move)
+        manifest = json.loads((self.root / "manifest.json").read_text())
+        manifest["moves"] = ["data/move.json"]
+        write_json(self.root / "manifest.json", manifest)
+        loaded = load_project(self.root, self.kernel)
+        self.assertEqual(loaded.moves[0].power, 200)
+        self.assertEqual(json.loads(loaded.canonical_json)["moves"][0]["power"], 200)
+        move["power"] = 0
+        write_json(self.root / "data/move.json", move)
+        with self.assertRaises(ContentError) as caught:
+            load_project(self.root, self.kernel)
+        self.assertEqual(caught.exception.diagnostics[0].pointer, "/power")
 
     def test_move_ranges_always_hit_and_animation_reference_are_checked(self) -> None:
         move = {"schemaVersion": "content-0", "id": "demo:quick", "name": "Quick",

@@ -167,3 +167,9 @@ def Laws.world_encounter_invalid_threshold_preserves_meter():
 
 def Laws.world_encounter_invalid_distance_preserves_meter():
   {==}
+
+def Laws.m10_boot_seed():
+  {==}
+
+def Laws.battle_typed_move_component_bounds():
+  {==}

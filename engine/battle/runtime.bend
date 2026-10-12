@@ -85,6 +85,17 @@ type QueuedReservation is Data:
     program: Effects.EffectProgram,
     snapshot: Effects.ActionSnapshot
   }
+  QueuedTypedMove{
+    sequence: Nat,
+    reservation: SourceReservation,
+    attacker: CombatProfile,
+    recoil: Nat,
+    program: Effects.EffectProgram,
+    components: List<&2, Multi.TypeId>,
+    actor_types: List<&2, Multi.TypeId>,
+    target_types: List<&2, Multi.TypeId>,
+    snapshot: Effects.ActionSnapshot
+  }
   QueuedMixedMove{
     sequence: Nat,
     reservation: SourceReservation,
@@ -167,6 +178,22 @@ type RuntimeCommand is Data:
     program: Effects.EffectProgram,
     snapshot: Effects.ActionSnapshot
   }
+  RuntimeTypedMove{
+    source: Model.ActorId,
+    target: Model.ActorId,
+    move: Math.MoveId,
+    windup: U32,
+    recovery: U32,
+    cooldown: U32,
+    priority: Nat,
+    recoil: Nat,
+    attacker: CombatProfile,
+    program: Effects.EffectProgram,
+    components: List<&2, Multi.TypeId>,
+    actor_types: List<&2, Multi.TypeId>,
+    target_types: List<&2, Multi.TypeId>,
+    snapshot: Effects.ActionSnapshot
+  }
   RuntimeMixedMove{
     source: Model.ActorId,
     target: Model.ActorId,
@@ -217,6 +244,10 @@ def RuntimeCommand.actor(command: RuntimeCommand) -> Model.ActorId:
     case RuntimeEffectMove{source, target, move, windup, recovery, cooldown,
         priority, recoil, attacker, program, snapshot}:
       source
+    case RuntimeTypedMove{source, target, move, windup, recovery, cooldown,
+        priority, recoil, attacker, program, components, actor_types,
+        target_types, snapshot}:
+      source
     case RuntimeMixedMove{source, target, windup, recovery, priority, recoil,
         attacker, plan, actor_types, target_types, witnesses, snapshot}:
       source
@@ -242,6 +273,11 @@ def runtime_model_command(command: RuntimeCommand) -> Model.Command:
         0n, recoil}
     case RuntimeEffectMove{source, target, move, windup, recovery, cooldown,
         priority, recoil, attacker, program, snapshot}:
+      Model.BattleMove{source, target, windup, recovery, cooldown, priority,
+        0n, recoil}
+    case RuntimeTypedMove{source, target, move, windup, recovery, cooldown,
+        priority, recoil, attacker, program, components, actor_types,
+        target_types, snapshot}:
       Model.BattleMove{source, target, windup, recovery, cooldown, priority,
         0n, recoil}
     case RuntimeMixedMove{source, target, windup, recovery, priority, recoil,
@@ -284,6 +320,10 @@ def runtime_source_requests(
       Sources.SourceRequest{source, move} <> runtime_source_requests(rest)
     case RuntimeEffectMove{source, target, move, windup, recovery, cooldown,
         priority, recoil, attacker, program, snapshot} <> rest:
+      Sources.SourceRequest{source, move} <> runtime_source_requests(rest)
+    case RuntimeTypedMove{source, target, move, windup, recovery, cooldown,
+        priority, recoil, attacker, program, components, actor_types,
+        target_types, snapshot} <> rest:
       Sources.SourceRequest{source, move} <> runtime_source_requests(rest)
     case RuntimeMixedMove{+source, target, windup, recovery, priority, recoil,
         attacker, plan, actor_types, target_types, witnesses, snapshot} <> rest:
@@ -374,6 +414,15 @@ def append_reservations(
             cooldown, priority, recoil, attacker, program, snapshot}:
           QueuedEffectMove{sequence,
             SourceReservation{source, move, target}, attacker, recoil, program,
+            queued_effect_snapshot(effects, snapshot)} <>
+            append_reservations(rest, 1n+sequence, player_speed, enemy_speed,
+              out, effects, accepted_now)
+        case RuntimeTypedMove{source, +target, move, windup, recovery,
+            cooldown, priority, recoil, attacker, program, components,
+            actor_types, target_types, snapshot}:
+          QueuedTypedMove{sequence,
+            SourceReservation{source, move, target}, attacker, recoil, program,
+            components, actor_types, target_types,
             queued_effect_snapshot(effects, snapshot)} <>
             append_reservations(rest, 1n+sequence, player_speed, enemy_speed,
               out, effects, accepted_now)
@@ -647,6 +696,14 @@ def effect_state_matches(
       Bool.and(Model.ActorId.eq(source, effect_source),
         Model.ActorId.eq(target, effect_target))
 
+def typed_components_result_valid(result: Multi.AllocationResult) -> Bool:
+  match result:
+    case Multi.Allocated{components}: True{}
+    case Multi.AllocationRejectedResult{reason}: False{}
+
+def typed_components_valid(components: List<&2, Multi.TypeId>) -> Bool:
+  typed_components_result_valid(Multi.allocation_types(components))
+
 def runtime_actor_le(left: Model.Actor, right: Model.Actor) -> Bool:
   match left right:
     case Model.Actor{left_id, left_side, left_hp, left_speed, left_phase,
@@ -780,6 +837,16 @@ def runtime_command_in_state(
       Bool.and(Bool.and(attacker_profile_ok(attacker),
           defender_found_ok(precheck_find_defender(target, defenders))),
         effect_state_matches(source, target, effects))
+    case RuntimeTypedMove{source, +target, move, windup, recovery, cooldown,
+        priority, recoil, attacker, program, components, actor_types,
+        target_types, snapshot}:
+      Bool.and(Bool.and(Bool.and(attacker_profile_ok(attacker),
+          defender_found_ok(precheck_find_defender(target, defenders))),
+        effect_state_matches(source, target, effects)),
+        Bool.and(Bool.and(Effects.snapshot_valid(snapshot),
+          Bool.and(Multi.type_snapshot_valid(actor_types),
+            Multi.type_snapshot_valid(target_types))),
+          typed_components_valid(components)))
     case RuntimeMixedMove{source, +target, windup, recovery, priority, recoil,
         attacker, plan, actor_types, target_types, witnesses, snapshot}:
       Bool.and(Bool.and(Bool.and(attacker_profile_ok(attacker),
@@ -836,6 +903,10 @@ def semantic_diagnostic(
       [Model.TargetInvalid{source, target}]
     case RuntimeEffectMove{source, target, move, windup, recovery, cooldown,
         priority, recoil, attacker, program, snapshot} <> rest:
+      [Model.TargetInvalid{source, target}]
+    case RuntimeTypedMove{source, target, move, windup, recovery, cooldown,
+        priority, recoil, attacker, program, components, actor_types,
+        target_types, snapshot} <> rest:
       [Model.TargetInvalid{source, target}]
     case RuntimeMixedMove{source, target, windup, recovery, priority, recoil,
         attacker, plan, actor_types, target_types, witnesses, snapshot} <> rest:
@@ -1015,6 +1086,9 @@ def queued_sequence(queued: QueuedReservation) -> Nat:
       sequence
     case QueuedEffectMove{sequence, reservation, attacker, recoil, program,
         snapshot}:
+      sequence
+    case QueuedTypedMove{sequence, reservation, attacker, recoil, program,
+        components, actor_types, target_types, snapshot}:
       sequence
     case QueuedMixedMove{sequence, reservation, second_source, attacker,
         recoil, plan, actor_types, target_types, witnesses, snapshot}:
@@ -1855,6 +1929,95 @@ def runtime_mixed_result(program: Effects.EffectProgram,
       runtime_mixed_result_program(effects, components, actor_types,
         target_types, world, snapshot)
 
+def typed_execute_target(valid: Bool, +reservation: SourceReservation,
+  +program: Effects.EffectProgram, components: List<&2, Multi.TypeId>,
+  actor_types: List<&2, Multi.TypeId>, target_types: List<&2, Multi.TypeId>,
+  +snapshot: Effects.ActionSnapshot, +original: RuntimeState, +tick: U32,
+  +actor: Model.ActorId, +target: Model.ActorId, +recovery: U32,
+  +cooldown: U32, +sequence: Nat,
+  remaining: List<&2, Model.BattleEvent>) -> RuntimeAdvanceResult:
+  match valid:
+    case False{}:
+      fizzle_move(original, tick, actor, target, recovery, cooldown, sequence,
+        remaining, reservation)
+    case True{}:
+      match original:
+        case RuntimeState{battle, rng, encounter, failed, sources,
+            reservations, trapped, defenders, effects}:
+          match effects:
+            case None{}: RuntimeFault{original, None{}}
+            case Some{RuntimeEffectState{source, target_actor, world}}:
+              effect_commit_result(Effects.attempt_typed(program, world,
+                snapshot, rng, True{}, runtime_mixed_result(program, components,
+                  actor_types, target_types, world, snapshot)), original, tick,
+                actor, target, recovery, cooldown, sequence, remaining,
+                reservation)
+
+def typed_execute_target_found(found: Maybe<&2, Model.Actor>,
+  actor_state: Model.Actor, +reservation: SourceReservation,
+  program: Effects.EffectProgram, components: List<&2, Multi.TypeId>,
+  actor_types: List<&2, Multi.TypeId>, target_types: List<&2, Multi.TypeId>,
+  snapshot: Effects.ActionSnapshot, +original: RuntimeState, +tick: U32,
+  +actor: Model.ActorId, +target: Model.ActorId, +recovery: U32,
+  +cooldown: U32, +sequence: Nat,
+  remaining: List<&2, Model.BattleEvent>) -> RuntimeAdvanceResult:
+  match found:
+    case None{}:
+      typed_execute_target(False{}, reservation, program, components,
+        actor_types, target_types, snapshot, original, tick, actor, target,
+        recovery, cooldown, sequence, remaining)
+    case Some{+target_state}:
+      typed_execute_target(Scheduler.target_ok(actor_state, target_state),
+        reservation, program, components, actor_types, target_types, snapshot,
+        original, tick, actor, target, recovery, cooldown, sequence, remaining)
+
+def typed_execute_actor_ready(ready: Bool, actor_state: Model.Actor,
+  +reservation: SourceReservation, program: Effects.EffectProgram,
+  components: List<&2, Multi.TypeId>, actor_types: List<&2, Multi.TypeId>,
+  target_types: List<&2, Multi.TypeId>, snapshot: Effects.ActionSnapshot,
+  +original: RuntimeState, +tick: U32, +actor: Model.ActorId,
+  +target: Model.ActorId, +recovery: U32, +cooldown: U32, +sequence: Nat,
+  remaining: List<&2, Model.BattleEvent>) -> RuntimeAdvanceResult:
+  match ready:
+    case False{}:
+      cancel_move(original, tick, actor, target, sequence, remaining,
+        reservation)
+    case True{}:
+      typed_execute_target_found(Scheduler.find_actor(target,
+        Reducer.state_actors(runtime_battle(original))), actor_state,
+        reservation, program, components, actor_types, target_types, snapshot,
+        original, tick, actor, target, recovery, cooldown, sequence, remaining)
+
+def typed_execute_actor(found: Maybe<&2, Model.Actor>,
+  +reservation: SourceReservation, program: Effects.EffectProgram,
+  components: List<&2, Multi.TypeId>, actor_types: List<&2, Multi.TypeId>,
+  target_types: List<&2, Multi.TypeId>, snapshot: Effects.ActionSnapshot,
+  +original: RuntimeState, +tick: U32, +actor: Model.ActorId,
+  +target: Model.ActorId, +recovery: U32, +cooldown: U32, +sequence: Nat,
+  remaining: List<&2, Model.BattleEvent>) -> RuntimeAdvanceResult:
+  match found:
+    case None{}:
+      cancel_move(original, tick, actor, target, sequence, remaining,
+        reservation)
+    case Some{+actor_state}:
+      typed_execute_actor_ready(Reducer.actor_can_execute(actor_state),
+        actor_state, reservation, program, components, actor_types,
+        target_types, snapshot, original, tick, actor, target, recovery,
+        cooldown, sequence, remaining)
+
+def execute_typed_queued(+reservation: SourceReservation,
+  program: Effects.EffectProgram, components: List<&2, Multi.TypeId>,
+  actor_types: List<&2, Multi.TypeId>, target_types: List<&2, Multi.TypeId>,
+  snapshot: Effects.ActionSnapshot, +original: RuntimeState, +tick: U32,
+  +actor: Model.ActorId, +target: Model.ActorId, +recovery: U32,
+  +cooldown: U32, +sequence: Nat,
+  remaining: List<&2, Model.BattleEvent>) -> RuntimeAdvanceResult:
+  typed_execute_actor(Scheduler.find_actor(actor,
+    Reducer.state_actors(runtime_battle(original))), reservation, program,
+    components, actor_types, target_types, snapshot, original, tick, actor,
+    target, recovery, cooldown, sequence, remaining)
+
+
 def runtime_mixed_status_changed(original: RuntimeState,
   events: List<&2, Effects.EffectEvent>) -> Bool:
   match original:
@@ -2091,6 +2254,11 @@ def execute_move_queued(
         program, snapshot}:
       execute_effect_queued(reservation, program, snapshot, original, tick,
         actor, target, recovery, cooldown, sequence, remaining)
+    case QueuedTypedMove{queued_seq, reservation, attacker, queued_recoil,
+        program, components, actor_types, target_types, snapshot}:
+      execute_typed_queued(reservation, program, components, actor_types,
+        target_types, snapshot, original, tick, actor, target, recovery,
+        cooldown, sequence, remaining)
     case QueuedMixedMove{queued_seq, reservation, second_source, attacker,
         queued_recoil, plan, actor_types, target_types, witnesses, snapshot}:
       execute_mixed_queued(reservation, second_source, plan, witnesses,

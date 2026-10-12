@@ -3,9 +3,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from .models import (AssetId, Encounter, EncounterId, EventGraph, EventId, EventNode, EncounterRegion, MapPresentation,
+from .models import (AssetId, DialogueId, Encounter, EncounterId, EventGraph, EventId, EventNode, EncounterRegion, MapPresentation,
                      MapId, MapRecord, MapTransition, NavLink, NavSurface,
-                     NavTriangle, NavVertex, NpcId, NpcRecord, TriggerId,
+                     NavTriangle, NavVertex, NpcId, NpcRecord, TrainerId, TriggerId,
                      TriggerRecord)
 
 from .world_limits import (EVENT_BYTES_LIMIT, EVENT_VALUE_LIMIT, MAX_ENTITIES,
@@ -260,7 +260,8 @@ def parse_world_content(root: Any, map_paths: list[str], event_paths: list[str],
         npcs: list[NpcRecord] = []
         for i, raw in enumerate(_array(d.get("npcs", []), rel, "/npcs")):
             p = f"/npcs/{i}"
-            row = _object(raw, {"id", "name", "x", "y", "z"}, rel, p, {"event", "sprite"})
+            row = _object(raw, {"id", "name", "x", "y", "z"}, rel, p,
+                          {"event", "sprite", "trainer", "dialogue"})
             npc_id = NpcId(_id(row["id"], rel, p + "/id"))
             event_id = EventId(_id(row["event"], rel, p + "/event")) if "event" in row else None
             if event_id is not None and str(event_id) not in event_ids:
@@ -271,8 +272,10 @@ def parse_world_content(root: Any, map_paths: list[str], event_paths: list[str],
                 _fail("npc-position", rel, p,
                       "NPC position must project onto a navigation face", npc_id)
             sprite = AssetId(_id(row["sprite"], rel, p + "/sprite")) if "sprite" in row else None
+            trainer = TrainerId(_id(row["trainer"], rel, p + "/trainer")) if "trainer" in row else None
+            dialogue = DialogueId(_id(row["dialogue"], rel, p + "/dialogue")) if "dialogue" in row else None
             npcs.append(NpcRecord(npc_id, _string(row["name"], rel, p + "/name"),
-                                  *coords, event_id, sprite))
+                                  *coords, event_id, sprite, trainer, dialogue))
         triggers: list[TriggerRecord] = []
         for i, raw in enumerate(_array(d.get("triggers", []), rel, "/triggers")):
             p = f"/triggers/{i}"

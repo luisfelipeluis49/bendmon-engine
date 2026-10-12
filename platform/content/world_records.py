@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import re
 
-from .models import (Encounter, EventGraph, EventNode, EncounterRegion,
+from .models import (Encounter, EntryPoint, EventGraph, EventNode, EncounterRegion,
                      LoadedProject, MapRecord, MapTransition, NavLink,
                      NavSurface, NavTriangle, NavVertex, NpcRecord,
                      TriggerRecord)
@@ -157,6 +157,19 @@ def validate_world_records(loaded: LoadedProject) -> None:
     encounters = {str(encounter.id) for encounter in loaded.encounters}
     if len(maps) != len(loaded.maps) or len(events) != len(loaded.events):
         raise WorldRecordError("duplicate map or event ID")
+    entry_point = loaded.project.entry_point
+    if entry_point is not None:
+        if (type(entry_point) is not EntryPoint or any(
+                type(coord) is not int or not -WORLD_COORD_LIMIT <= coord <= WORLD_COORD_LIMIT
+                for coord in (entry_point.x, entry_point.y, entry_point.z))):
+            raise WorldRecordError("project entryPoint: coordinates are invalid")
+        entry_map = maps.get(str(loaded.project.entry_map))
+        if entry_map is not None and entry_map.navigation is not None:
+            _validate_surface(entry_map.navigation, str(entry_map.id))
+        if (entry_map is None or entry_map.navigation is None or
+                not _point_on_surface(entry_point.x, entry_point.z,
+                                      entry_map.navigation)):
+            raise WorldRecordError("project entryPoint: position must lie on entryMap navigation")
     if len(loaded.events) > MAX_ENTITIES:
         raise WorldRecordError("event graph count exceeds Content-0 entity limit")
     event_nodes = sum(len(graph.nodes) for graph in loaded.events)

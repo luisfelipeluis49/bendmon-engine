@@ -1,0 +1,12 @@
+{
+  "schemaVersion": "content-0",
+  "id": "original:moss-strike",
+  "name": "Moss Strike",
+  "windup": 0,
+  "recovery": 30,
+  "cooldown": 60,
+  "animation": "original:mosskip-sprite",
+  "components": [0],
+  "power": 40,
+  "accuracy": 10000
+}

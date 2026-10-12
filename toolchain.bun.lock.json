@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "tool": "Bun",
+  "version": "1.4.2",
+  "url": "https://github.com/oven-sh/bun/releases/download/bun-v1.4.2/bun-linux-x64.zip",
+  "archive": ".toolchain/bun-linux-x64-1.4.2.zip",
+  "archiveSha256": "36368faef7527875d5ffa52e53cd48021741f2a83eb6208a8dd64068d422a913",
+  "binary": ".toolchain/bun/bin/bun",
+  "binarySha256": "a83d263767d839e4d2649ca8e35d07159c7afc99afdc96d731ced29e056dda0c"
+}

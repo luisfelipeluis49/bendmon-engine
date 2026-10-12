@@ -119,6 +119,9 @@ class M8ContentBinding:
     encounter_ids: Mapping[str, int]
     transition_ids: Mapping[tuple[str, str], int]
     m7: M7ContentBinding
+    entry_point: BoundPoint | None = None
+    starter_species_id: int | None = None
+    starter_level: int | None = None
 
 
 def _coordinate(value: int) -> SignedCoord:
@@ -269,4 +272,11 @@ def bind_m8_content(loaded: LoadedProject, *, expected_ruleset_version: str,
         map_ids[str(loaded.project.entry_map)], maps, events, encounters,
         MappingProxyType(map_ids), MappingProxyType(event_ids),
         MappingProxyType(encounter_ids), MappingProxyType(transition_ids), m7,
+        (_point(loaded.project.entry_point.x, loaded.project.entry_point.y,
+                loaded.project.entry_point.z)
+         if loaded.project.entry_point is not None else None),
+        (species_ids[str(loaded.project.starter.species)]
+         if loaded.project.starter is not None else None),
+        (loaded.project.starter.level if loaded.project.starter is not None
+         else None),
     )

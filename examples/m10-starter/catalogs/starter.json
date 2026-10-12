@@ -1,0 +1,50 @@
+{
+  "schemaVersion": "content-0",
+  "id": "original:starter",
+  "species": [
+    {
+      "id": "original:mosskip",
+      "name": "Mosskip",
+      "sprite": "original:mosskip-sprite",
+      "progression": {
+        "baseStats": {
+          "hp": 45,
+          "attack": 45,
+          "defense": 45,
+          "specialAttack": 45,
+          "specialDefense": 45,
+          "speed": 45
+        },
+        "captureRate": 4500,
+        "baseXpYield": 40,
+        "baseCurrencyYield": 10
+      },
+      "levelMoves": [
+        {"level": 1, "move": "original:moss-strike"}
+      ],
+      "evolutions": []
+    },
+    {
+      "id": "original:emberling",
+      "name": "Emberling",
+      "sprite": "original:mosskip-sprite",
+      "progression": {
+        "baseStats": {
+          "hp": 45,
+          "attack": 45,
+          "defense": 45,
+          "specialAttack": 45,
+          "specialDefense": 45,
+          "speed": 45
+        },
+        "captureRate": 4500,
+        "baseXpYield": 40,
+        "baseCurrencyYield": 10
+      },
+      "levelMoves": [
+        {"level": 1, "move": "original:moss-strike"}
+      ],
+      "evolutions": []
+    }
+  ]
+}

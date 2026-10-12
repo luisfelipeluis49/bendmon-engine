@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from types import MappingProxyType
 from typing import Mapping
 
-from .models import (CapacityTier, EvolutionRule, LevelMove, LoadedProject,
+from .models import (CapacityTier, EvolutionRule, LevelMove, LoadedProject, MoveEffect,
                      SpeciesProgression)
 from persistence.battle_replay import M7_RULESET_VERSION
 
@@ -28,6 +28,7 @@ class SpeciesBinding:
     evolutions: tuple[EvolutionRule, ...]
     engine_level_moves: tuple[tuple[int, int], ...]
     engine_evolutions: tuple["EngineEvolutionRule", ...]
+    combat_types: tuple[int, ...] = (0,)
 
 
 @dataclass(frozen=True, slots=True)
@@ -68,6 +69,16 @@ class EncounterBinding:
 @dataclass(frozen=True, slots=True)
 class MoveBinding:
     id: int
+    power: int | None = None
+    accuracy: int | None = None
+    always_hit: bool = False
+    windup: int = 0
+    recovery: int = 0
+    cooldown: int = 0
+    components: tuple[int, ...] | None = None
+    damage_category: str = "physical"
+    effects: tuple[MoveEffect, ...] = ()
+    priority: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -234,7 +245,8 @@ def bind_m7_content(loaded: LoadedProject) -> M7ContentBinding:
                            tuple(engine_predicate(predicate.kind,
                                                   predicate.value)
                                  for predicate in rule.predicates))
-                             for rule in row.evolutions))
+                             for rule in row.evolutions),
+                       tuple(int(value) for value in row.combat_types))
         for row in sorted(loaded.species, key=lambda row: str(row.id))
     )
     items = tuple(
@@ -256,7 +268,12 @@ def bind_m7_content(loaded: LoadedProject) -> M7ContentBinding:
         )
         for row in sorted(loaded.encounters, key=lambda row: str(row.id))
     )
-    moves = tuple(MoveBinding(move_ids[str(row.id)])
+    moves = tuple(MoveBinding(move_ids[str(row.id)], row.power, row.accuracy,
+                              row.always_hit, row.windup, row.recovery,
+                              row.cooldown,
+                              None if row.components is None else
+                              tuple(int(value) for value in row.components),
+                              row.damage_category, row.effects, row.priority)
                   for row in sorted(loaded.moves, key=lambda row: str(row.id)))
     shops = tuple(
         ShopBinding(str(row.id), tuple(item_ids[str(item)] for item in row.items))

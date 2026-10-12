@@ -124,6 +124,12 @@ def main():
     run('battle driver golden', ['bend', 'tests/battle/driver_test.bend'], output='[1n, 1n, 1n]')
     run('battle runtime golden', ['bend', 'tests/battle/runtime_test.bend'], output='[1n, 1n, 1n, 1n, 1n, 1n, 1n, 1n, 1n, 1n, 1n, 1n, 1n, 1n, 1n, 1n, 1n, 1n, 1n, 1n]')
     run('battle effect runtime golden', ['bend', 'tests/battle/runtime_effect_test.bend'], output='[31n, 1n, 1n, 11n, 1n]')
+    run('battle typed move native golden',
+        ['bend', 'tests/battle/runtime_typed_test.bend'], output='1n')
+    run('battle typed move JavaScript build',
+        ['bend', 'tests/battle/runtime_typed_test.bend', '-o', BUILD / 'runtime_typed.js'])
+    run('battle typed move JavaScript golden',
+        ['node', BUILD / 'runtime_typed.js'], output='1n')
     run('battle effect algebra golden', ['bend', 'tests/battle/effects_test.bend'], output='[1n, 1n, 1n, 1n, 1n, 1n, 1n, 1n, 1n, 1n, 1n, 1n, 1n, 1n, 1n, 1n, 1n, 1n, 1n, 1n, 1n, 1n, 1n, 1n, 1n, 1n, 1n, 1n]')
     # The exact-rational M5 golden compiles in roughly 70 seconds locally and
     # needs the same hosted-runner allowance as the replay differential group.
@@ -251,6 +257,115 @@ def main():
     run('M9 loaded SDL world, battle, return and cue playback',
         ['bash', 'tests/m9/loaded_graphical.sh'],
         contains='cue-frame-index=1', timeout=180)
+    run('M10 maker service and frozen-boundary suite', [sys.executable, '-m',
+        'unittest', 'discover', '-s', 'tests/m10', '-p', 'test_*.py', '-v'], timeout=360)
+    run('M10 draft state and form templates', ['node', '--test',
+        'tests/m10/browser/state.test.mjs', 'tests/m10/browser/forms.test.mjs',
+        'tests/m10/browser/map.test.mjs'])
+    run('M10 typed dynamic-world native fixture', ['bend',
+        'tests/m10/dynamic_catalog_test.bend'], contains='True{}', timeout=180)
+    run('M10 polygon validity native fixture', ['bend',
+        'tests/m10/dynamic_polygon_test.bend'], contains='True{}', timeout=180)
+    run('M10 polygon validity JavaScript build', ['bend',
+        'tests/m10/dynamic_polygon_test.bend', '-o', BUILD / 'm10_polygon.js'],
+        timeout=180)
+    run('M10 polygon validity JavaScript fixture',
+        ['node', BUILD / 'm10_polygon.js'], output='True{}', timeout=180)
+    run('M10 event and encounter wire native fixture', ['bend',
+        'tests/m10/dynamic_events_test.bend'], contains='True{}', timeout=180)
+    run('M10 joined content native fixture', ['bend',
+        'tests/m10/dynamic_content_test.bend'], contains='True{}', timeout=180)
+    run('M10 joined content JavaScript build', ['bend',
+        'tests/m10/dynamic_content_test.bend', '-o', BUILD / 'm10_dynamic_content.js'],
+        timeout=180)
+    run('M10 joined content JavaScript fixture',
+        ['node', BUILD / 'm10_dynamic_content.js'], output='True{}', timeout=180)
+    run('M10 species progression native fixture', ['bend',
+        'tests/m10/dynamic_species_test.bend'], contains='True{}', timeout=180)
+    run('M10 species progression JavaScript build', ['bend',
+        'tests/m10/dynamic_species_test.bend', '-o', BUILD / 'm10_dynamic_species.js'],
+        timeout=180)
+    run('M10 species progression JavaScript fixture',
+        ['node', BUILD / 'm10_dynamic_species.js'], output='True{}', timeout=180)
+    run('M10 dynamic learning native fixture', ['bend',
+        'tests/m10/dynamic_learning_test.bend'], contains='True{}', timeout=180)
+    run('M10 dynamic learning JavaScript build', ['bend',
+        'tests/m10/dynamic_learning_test.bend', '-o', BUILD / 'm10_dynamic_learning.js'],
+        timeout=180)
+    run('M10 dynamic learning JavaScript fixture',
+        ['node', BUILD / 'm10_dynamic_learning.js'], output='True{}', timeout=180)
+    run('M10 encounter species join native fixture', ['bend',
+        'tests/m10/dynamic_battle_content_test.bend'], contains='True{}', timeout=180)
+    run('M10 encounter species join JavaScript build', ['bend',
+        'tests/m10/dynamic_battle_content_test.bend', '-o',
+        BUILD / 'm10_dynamic_battle_content.js'], timeout=180)
+    run('M10 encounter species join JavaScript fixture',
+        ['node', BUILD / 'm10_dynamic_battle_content.js'],
+        output='True{}', timeout=180)
+    run('M10 loaded world-command native fixture', ['bend',
+        'tests/m10/playtest_world_command_test.bend'], contains='True{}', timeout=180)
+    run('M10 numeric command-log native fixture', ['bend',
+        'tests/m10/dynamic_command_wire_test.bend'], contains='True{}', timeout=180)
+    run('M10 numeric command-log JavaScript build', ['bend',
+        'tests/m10/dynamic_command_wire_test.bend', '-o', BUILD / 'm10_command_wire.js'],
+        timeout=180)
+    run('M10 numeric command-log JavaScript fixture',
+        ['node', BUILD / 'm10_command_wire.js'], output='True{}', timeout=180)
+    run('M10 loaded world-command JavaScript build', ['bend',
+        'tests/m10/playtest_world_command_test.bend', '-o', BUILD / 'm10_world_command.js'],
+        timeout=180)
+    run('M10 loaded world-command JavaScript fixture',
+        ['node', BUILD / 'm10_world_command.js'], output='True{}', timeout=180)
+    run('M10 bounded world replay native fixture', ['bend',
+        'tests/m10/playtest_replay_test.bend'], contains='True{}', timeout=180)
+    run('M10 bounded world replay JavaScript build', ['bend',
+        'tests/m10/playtest_replay_test.bend', '-o', BUILD / 'm10_replay.js'],
+        timeout=180)
+    run('M10 bounded world replay JavaScript fixture',
+        ['node', BUILD / 'm10_replay.js'], output='True{}', timeout=180)
+    run('M10 playtest boot native fixture', ['bend',
+        'tests/m10/playtest_boot_test.bend'], output='True{}', timeout=180)
+    run('M10 playtest boot JavaScript build', ['bend',
+        'tests/m10/playtest_boot_test.bend', '-o', BUILD / 'm10_playtest_boot.js'],
+        timeout=180)
+    run('M10 playtest boot JavaScript fixture',
+        ['node', BUILD / 'm10_playtest_boot.js'], output='True{}', timeout=180)
+    for stem in ('dynamic_playable_encounter_test',):
+        fixture = ROOT / 'tests/m10' / f'{stem}.bend'
+        javascript = BUILD / f'm10_{stem}.js'
+        run(f'M10 {stem} interpreted native fixture',
+            ['bend', fixture], contains='True{}', timeout=480)
+        run(f'M10 {stem} JavaScript build',
+            ['bend', fixture, '-o', javascript], timeout=480)
+        run(f'M10 {stem} JavaScript fixture',
+            ['node', javascript], output='True{}', timeout=180)
+    # The full replay imports both M8 and M7 and exceeds the pinned Bend
+    # interpreter's hosted-runner budget. Its product target is JavaScript;
+    # focused native fixtures above cover typed M7 actions and the encounter
+    # boundary, while the packaged-runtime suite covers the composed path.
+    replay_fixture = ROOT / 'tests/m10/playtest_battle_replay_test.bend'
+    replay_javascript = BUILD / 'm10_playtest_battle_replay_test.js'
+    run('M10 playtest battle replay JavaScript build',
+        ['bend', replay_fixture, '-o', replay_javascript], timeout=480)
+    run('M10 playtest battle replay JavaScript fixture',
+        ['node', replay_javascript], output='True{}', timeout=180)
+    for stem in ('dialogue_test', 'dynamic_dialogue_join_test',
+                 'dynamic_moves_test', 'dynamic_battle_boot_test',
+                 'dynamic_playable_boot_test'):
+        fixture = ROOT / 'tests/m10' / f'{stem}.bend'
+        native = BUILD / f'm10_{stem}'
+        javascript = BUILD / f'm10_{stem}.js'
+        run(f'M10 {stem} native build', ['bend', fixture, '-o', native], timeout=480)
+        run(f'M10 {stem} JavaScript build', ['bend', fixture, '-o', javascript],
+            timeout=480)
+        native_result = run(f'M10 {stem} native fixture', [native, '--threads', '1',
+                             '--gpu', 'off'], output='True{}', timeout=180)
+        javascript_result = run(f'M10 {stem} JavaScript fixture',
+                                ['node', javascript], output='True{}', timeout=180)
+        assert native_result.stdout == javascript_result.stdout
+    for module in ('main.mjs', 'forms.mjs', 'map.mjs', 'state.mjs'):
+        run('M10 browser syntax ' + module,
+            ['node', '--check', ROOT / 'platform/maker/browser' / module])
     run('battle replay fold golden', ['bend', 'tests/replay/fold_test.bend'], output='[1n, 1n, 1n, 1n]')
     run('battle runtime replay golden', ['bend', 'tests/replay/runtime_fold_test.bend'], output='[1n, 1n, 1n]')
     run('battle effect replay golden', ['bend', 'tests/replay/runtime_effect_fold_test.bend'], output='[1n]')
@@ -279,4 +394,5 @@ if __name__ == '__main__':
         sys.exit(1)
     finally:
         EVIDENCE.mkdir(parents=True, exist_ok=True)
-        (EVIDENCE / 'verification.json').write_text(json.dumps({'checks': RESULTS, 'scope': 'M0-M9 deterministic engine, validated world and media content, native/JS journey parity, CPU graphics and SDL3 smoke; live visual QA is recorded separately'}, indent=2) + '\n')
+        (EVIDENCE / 'verification.json').write_text(json.dumps({'checks': RESULTS,
+            'scope': 'M0-M10 deterministic engine, validated content and world, focused native/JS parity, packaged maker playtest, browser controls, CPU graphics and SDL3 smoke'}, indent=2) + '\n')

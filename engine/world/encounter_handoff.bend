@@ -9,6 +9,9 @@ import ../progression/core.bend as Progression
 import ../battle/rng.bend as Rng
 import ../battle/runtime.bend as Runtime
 import ../battle/model.bend as Battle
+import ../battle/effects.bend as Effects
+import ../battle/combat_math.bend as Math
+import ../battle/sources.bend as Sources
 
 # Selection is a distinct pure phase because the host builds the M7 combat
 # snapshot from the chosen wild species and saved owned roster.
@@ -105,11 +108,79 @@ def fresh_battle(state: Battle.BattleState) -> Bool:
         Battle.AwaitingCommands{}}: True{}
     case _: False{}
 
+# Runtime bindings may be populated at bootstrap, but every source and effect
+# snapshot must still describe the untouched actor-0 versus actor-1 encounter.
+def fresh_sources(sources: List<&2, Sources.MoveSource>) -> Bool:
+  match sources:
+    case Nil{}: True{}
+    case Sources.MoveSource{+owner, move, deadline, reserved} <> rest:
+      Bool.and(Bool.or(Battle.ActorId.eq(owner, Battle.ActorId{0n}),
+          Battle.ActorId.eq(owner, Battle.ActorId{1n})),
+        Bool.and(U32.is_zero(deadline), Bool.and(Bool.not(reserved),
+          fresh_sources(rest))))
+
+def fresh_snapshot_bindings(actors: List<&2, Battle.Actor>,
+  defenders: List<&2, Runtime.DefenderSnapshot>,
+  effects: Maybe<&2, Runtime.RuntimeEffectState>) -> Bool:
+  match actors defenders effects:
+    # M7/M8 can hand off an untouched battle with one enemy defender snapshot.
+    # M10's populated effect snapshots must match the fresh actor state below.
+    case [Battle.Actor{Battle.ActorId{0n}, Battle.Player{}, player_hp,
+             player_speed, Battle.Ready{}, 0},
+          Battle.Actor{Battle.ActorId{1n}, Battle.Enemy{}, enemy_hp,
+             enemy_speed, Battle.Ready{}, 0}]
+         [Runtime.DefenderSnapshot{Battle.ActorId{1n}, profile}] None{}: True{}
+    case [Battle.Actor{Battle.ActorId{0n}, Battle.Player{}, player_hp,
+             player_speed, Battle.Ready{}, 0},
+          Battle.Actor{Battle.ActorId{1n}, Battle.Enemy{}, enemy_hp,
+             enemy_speed, Battle.Ready{}, 0}]
+         [Runtime.DefenderSnapshot{Battle.ActorId{0n}, player_profile},
+          Runtime.DefenderSnapshot{Battle.ActorId{1n}, enemy_profile}]
+         Some{Runtime.RuntimeEffectState{Battle.ActorId{0n},
+           Battle.ActorId{1n}, Effects.EffectWorld{
+             Effects.EffectActor{+player_effect_hp, player_max_hp,
+               player_defense, player_special_defense,
+               Effects.StatStages{Math.StageNeutral{}, Math.StageNeutral{},
+                 Math.StageNeutral{}, Math.StageNeutral{}, Math.StageNeutral{},
+                 Math.StageNeutral{}, Math.StageNeutral{}},
+               [], False{}, []},
+             Effects.EffectActor{+enemy_effect_hp, enemy_max_hp,
+               enemy_defense, enemy_special_defense,
+               Effects.StatStages{Math.StageNeutral{}, Math.StageNeutral{},
+                 Math.StageNeutral{}, Math.StageNeutral{}, Math.StageNeutral{},
+                 Math.StageNeutral{}, Math.StageNeutral{}},
+               [], False{}, []}}}}:
+      Bool.and(U32.is_eq(U32.from_nat(player_hp), player_effect_hp),
+        Bool.and(U32.is_eq(U32.from_nat(enemy_hp), enemy_effect_hp),
+          Bool.and(U32.is_eq(player_effect_hp, player_max_hp),
+            U32.is_eq(enemy_effect_hp, enemy_max_hp))))
+    case _ _ _: False{}
+
+def fresh_runtime_snapshots(fresh: Bool, battle: Battle.BattleState,
+  defenders: List<&2, Runtime.DefenderSnapshot>,
+  effects: Maybe<&2, Runtime.RuntimeEffectState>) -> Bool:
+  match fresh:
+    case False{}: False{}
+    case True{}:
+      match battle:
+        case Battle.BattleState{now, wait_ticks, actors, events,
+            next_sequence, status}:
+          fresh_snapshot_bindings(actors, defenders, effects)
+
+def fresh_runtime_inputs(valid: Bool, battle: Battle.BattleState,
+  defenders: List<&2, Runtime.DefenderSnapshot>,
+  effects: Maybe<&2, Runtime.RuntimeEffectState>) -> Bool:
+  match valid:
+    case False{}: False{}
+    case True{}:
+      fresh_runtime_snapshots(True{}, battle, defenders, effects)
+
 def fresh_runtime(state: Runtime.RuntimeState) -> Bool:
   match state:
-    case Runtime.RuntimeState{battle, rng, encounter, failed,
-        sources, Nil{}, trapped, defenders, None{}}:
-      fresh_battle(battle)
+    case Runtime.RuntimeState{+battle, rng, encounter, failed,
+        sources, Nil{}, trapped, defenders, effects}:
+      fresh_runtime_inputs(Bool.and(fresh_battle(battle),
+          fresh_sources(sources)), battle, defenders, effects)
     case _: False{}
 
 def fresh_playable(session: Playable.PlayableSession) -> Bool:

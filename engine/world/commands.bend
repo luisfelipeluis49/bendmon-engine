@@ -78,17 +78,73 @@ def npc_event_face(same_face: Bool, event_id: Nat) -> Maybe<&2, Nat>:
     case True{}: Some{event_id}
     case False{}: None{}
 
+# The cone uses Nat products. Check distance first so a distant authored NPC
+# cannot overflow that arithmetic before the interaction is rejected.
+def npc_event_near(near: Bool, +player_point: Geometry.Point,
+  +point: Geometry.Point, facing_x: Geometry.Coord,
+  facing_z: Geometry.Coord, event_id: Nat) -> Maybe<&2, Nat>:
+  match near:
+    case False{}: None{}
+    case True{}:
+      npc_event_face(Geometry.interaction_in_cone(player_point,
+        point, facing_x, facing_z), event_id)
+
 def npc_event(npc: Maybe<&2, Catalog.Npc>, face: Maybe<&2, U32>,
   map: Catalog.WorldMap, +player_point: Geometry.Point,
   facing_x: Geometry.Coord, facing_z: Geometry.Coord) -> Maybe<&2, Nat>:
   match npc face:
     case Some{Catalog.Npc{id, +point, Some{event_id}}} Some{player_face}:
-      npc_event_face(Bool.and(point_face_match(face_for(map, point),
+      npc_event_near(Bool.and(point_face_match(face_for(map, point),
         Geometry.FaceAccepted{player_face}),
-        Bool.and(Geometry.interaction_in_range(Geometry.traveled(point,
-          player_point)), Geometry.interaction_in_cone(player_point,
-          point, facing_x, facing_z))), event_id)
+        Geometry.interaction_in_range(Geometry.traveled(point,
+          player_point))), player_point, point, facing_x, facing_z, event_id)
     case _ _: None{}
+
+# Dialogue-only NPCs still use the same baked-face, range, and facing checks
+# as event NPCs. This predicate intentionally does not require event_id.
+def npc_interaction_near(near: Bool, +player_point: Geometry.Point,
+  +point: Geometry.Point, facing_x: Geometry.Coord,
+  facing_z: Geometry.Coord) -> Bool:
+  match near:
+    case False{}: False{}
+    case True{}: Geometry.interaction_in_cone(player_point, point,
+      facing_x, facing_z)
+
+def npc_interactable(npc: Maybe<&2, Catalog.Npc>,
+  face: Maybe<&2, U32>, map: Catalog.WorldMap,
+  +player_point: Geometry.Point, facing_x: Geometry.Coord,
+  facing_z: Geometry.Coord) -> Bool:
+  match npc face:
+    case Some{Catalog.Npc{id, +point, event_id}} Some{player_face}:
+      Bool.and(point_face_match(face_for(map, point),
+        Geometry.FaceAccepted{player_face}),
+        npc_interaction_near(Geometry.interaction_in_range(
+          Geometry.traveled(point, player_point)), player_point, point,
+          facing_x, facing_z))
+    case _ _: False{}
+
+def interaction_valid_in_map(map: Catalog.WorldMap,
+  state: Bridge.State, npc_id: Nat, facing_x: Geometry.Coord,
+  facing_z: Geometry.Coord) -> Bool:
+  match map state:
+    case Catalog.WorldMap{+id, +navigation, +regions, +npcs, +triggers,
+        +transitions}
+         Bridge.State{Exploration.State{map_id, +point, meter, None{}, identity},
+           persistent, None{}}:
+      npc_interactable(npc_at(npc_id, npcs),
+        current_face(Some{Catalog.WorldMap{id, navigation, regions, npcs,
+          triggers, transitions}}, point),
+        Catalog.WorldMap{id, navigation, regions, npcs, triggers, transitions},
+        point, facing_x, facing_z)
+    case _ _: False{}
+
+def interaction_valid_lookup(found: Maybe<&2, Catalog.WorldMap>,
+  state: Bridge.State, npc_id: Nat, facing_x: Geometry.Coord,
+  facing_z: Geometry.Coord) -> Bool:
+  match found:
+    case None{}: False{}
+    case Some{map}:
+      interaction_valid_in_map(map, state, npc_id, facing_x, facing_z)
 
 def trigger_event_inside(inside: Bool, event_id: Nat) -> Maybe<&2, Nat>:
   match inside:
@@ -274,6 +330,16 @@ def traverse_at(found: Maybe<&2, Catalog.WorldMap>, catalog: Catalog.Catalog,
 def maps_of(catalog: Catalog.Catalog) -> List<&2, Catalog.WorldMap>:
   match catalog:
     case Catalog.Catalog{ruleset, content_identity, maps, events}: maps
+
+def interaction_valid(+catalog: Catalog.Catalog,
+  +state: Bridge.State, +npc_id: Nat, +facing_x: Geometry.Coord,
+  facing_z: Geometry.Coord) -> Bool:
+  match state:
+    case Bridge.State{Exploration.State{+map_id, point, meter, pending,
+        identity}, persistent, active}:
+      Bool.and(validate_identity(catalog, state),
+        interaction_valid_lookup(Catalog.map_by_id(maps_of(catalog), map_id),
+          state, npc_id, facing_x, facing_z))
 
 def dispatch(valid: Bool, command: Command, +catalog: Catalog.Catalog,
   +state: Bridge.State) -> CommandResult:

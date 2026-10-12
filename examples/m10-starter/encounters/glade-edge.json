@@ -1,0 +1,8 @@
+{
+  "schemaVersion": "content-0",
+  "id": "original:glade-edge",
+  "entries": [
+    {"species": "original:mosskip", "level": 7},
+    {"species": "original:emberling", "level": 8}
+  ]
+}

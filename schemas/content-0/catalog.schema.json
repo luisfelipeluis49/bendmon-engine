@@ -18,6 +18,7 @@
       "required": ["id", "name", "sprite"],
       "properties": {"id": {"$ref": "#/$defs/id"}, "name": {"$ref": "#/$defs/name"}, "sprite": {"$ref": "#/$defs/id"},
         "progression": {"$ref": "#/$defs/progression"},
+        "types": {"type": "array", "minItems": 1, "maxItems": 2, "uniqueItems": true, "items": {"type": "integer", "minimum": 0, "maximum": 9}},
         "levelMoves": {"type": "array", "maxItems": 256, "items": {"$ref": "#/$defs/levelMove"}},
         "evolutions": {"type": "array", "maxItems": 256, "items": {"$ref": "#/$defs/evolutionRule"}}}
     },

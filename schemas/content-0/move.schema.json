@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "content-0/move.schema.json",
-  "title": "Content-0 move timing and presentation descriptor",
+  "title": "Content-0 closed move descriptor",
   "type": "object",
   "additionalProperties": false,
   "required": ["schemaVersion", "id", "name", "windup", "recovery", "cooldown", "animation"],
@@ -12,16 +12,34 @@
     "windup": {"type": "integer", "minimum": 0, "maximum": 600},
     "recovery": {"type": "integer", "minimum": 30, "maximum": 600},
     "cooldown": {"type": "integer", "minimum": 60, "maximum": 3600},
+    "priority": {"type": "integer", "minimum": -8, "maximum": 8, "default": 0},
+    "power": {"type": "integer", "minimum": 1, "maximum": 200},
+    "damageCategory": {"enum": ["physical", "special"]},
     "animation": {"$ref": "#/$defs/id"},
     "components": {"type": "array", "minItems": 1, "maxItems": 4, "uniqueItems": true, "items": {"type": "integer", "minimum": 0, "maximum": 9}},
     "accuracy": {"type": "integer", "minimum": 500, "maximum": 10000},
-    "alwaysHit": {"const": true}
+    "alwaysHit": {"const": true},
+    "effects": {"type": "array", "minItems": 1, "maxItems": 16, "items": {"$ref": "#/$defs/effect"}}
   },
-  "oneOf": [
-    {"required": ["accuracy"], "not": {"required": ["alwaysHit"]}},
-    {"required": ["alwaysHit"], "not": {"required": ["accuracy"]}}
+  "allOf": [
+    {"if": {"required": ["damageCategory"]}, "then": {"required": ["power"]}},
+    {"if": {"required": ["effects"]}, "then": {"not": {"required": ["power"]}}},
+    {"oneOf": [{"required": ["accuracy"], "not": {"required": ["alwaysHit"]}}, {"required": ["alwaysHit"], "not": {"required": ["accuracy"]}}]}
   ],
   "$defs": {
-    "id": {"type": "string", "pattern": "^[a-z][a-z0-9_-]{0,31}:[a-z][a-z0-9_-]{0,31}$"}
+    "id": {"type": "string", "pattern": "^[a-z][a-z0-9_-]{0,31}:[a-z][a-z0-9_-]{0,31}$"},
+    "target": {"enum": ["source", "target"]},
+    "status": {"enum": ["burn", "poison", "sleep", "stun", "blind"]},
+    "leaf": {
+      "oneOf": [
+        {"type":"object","additionalProperties":false,"required":["kind","target","category","power"],"properties":{"kind":{"const":"damage"},"target":{"$ref":"#/$defs/target"},"category":{"enum":["physical","special"]},"power":{"type":"integer","minimum":1,"maximum":200}}},
+        {"type":"object","additionalProperties":false,"required":["kind","target","amount"],"properties":{"kind":{"const":"heal"},"target":{"$ref":"#/$defs/target"},"amount":{"type":"integer","minimum":1,"maximum":9999}}},
+        {"type":"object","additionalProperties":false,"required":["kind","target","fromNode","numerator","denominator"],"properties":{"kind":{"enum":["drain","recoil"]},"target":{"$ref":"#/$defs/target"},"fromNode":{"const":0},"numerator":{"type":"integer","minimum":1,"maximum":16},"denominator":{"type":"integer","minimum":1,"maximum":16}}},
+        {"type":"object","additionalProperties":false,"required":["kind","target","status"],"properties":{"kind":{"enum":["applyStatus","removeStatus"]},"target":{"$ref":"#/$defs/target"},"status":{"$ref":"#/$defs/status"}}},
+        {"type":"object","additionalProperties":false,"required":["kind","target"],"properties":{"kind":{"const":"clearStatuses"},"target":{"$ref":"#/$defs/target"}}},
+        {"type":"object","additionalProperties":false,"required":["kind","target","stat","direction","magnitude"],"properties":{"kind":{"const":"modifyStat"},"target":{"$ref":"#/$defs/target"},"stat":{"enum":["attack","defense","specialAttack","specialDefense","speed","accuracy","evasion"]},"direction":{"enum":["raise","lower"]},"magnitude":{"type":"integer","minimum":1,"maximum":6}}}
+      ]
+    },
+    "effect": {"oneOf":[{"$ref":"#/$defs/leaf"},{"type":"object","additionalProperties":false,"required":["kind","predicate","then","else"],"properties":{"kind":{"const":"conditional"},"predicate":{"oneOf":[{"type":"object","additionalProperties":false,"required":["kind","target"],"properties":{"kind":{"const":"hpBelowHalf"},"target":{"$ref":"#/$defs/target"}}},{"type":"object","additionalProperties":false,"required":["kind","target","status"],"properties":{"kind":{"const":"hasStatus"},"target":{"$ref":"#/$defs/target"},"status":{"$ref":"#/$defs/status"}}},{"type":"object","additionalProperties":false,"required":["kind","node"],"properties":{"kind":{"const":"priorDamagePositive"},"node":{"const":0}}}]},"then":{"type":"array","items":{"$ref":"#/$defs/leaf"}},"else":{"type":"array","items":{"$ref":"#/$defs/leaf"}}}}]}
   }
 }

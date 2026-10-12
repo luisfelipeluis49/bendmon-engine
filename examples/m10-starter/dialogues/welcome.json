@@ -1,0 +1,14 @@
+{
+  "schemaVersion": "content-0",
+  "id": "original:welcome",
+  "lines": [
+    {
+      "speaker": "Glade Guide",
+      "text": "Welcome to Mosslight Glade."
+    },
+    {
+      "speaker": "Glade Guide",
+      "text": "The grass ahead is home to wild Mosskip."
+    }
+  ]
+}

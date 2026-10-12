@@ -9,6 +9,8 @@
     "y": {"type": "integer", "minimum": -524288, "maximum": 524288},
     "z": {"type": "integer", "minimum": -524288, "maximum": 524288},
     "event": {"$ref": "../map.schema.json#/$defs/id"},
-    "sprite": {"$ref": "../map.schema.json#/$defs/id"}
+    "sprite": {"$ref": "../map.schema.json#/$defs/id"},
+    "trainer": {"$ref": "../map.schema.json#/$defs/id"},
+    "dialogue": {"$ref": "../map.schema.json#/$defs/id"}
   }
 }

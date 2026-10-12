@@ -27,6 +27,7 @@ import ./engine/m7/rewards.bend as M7Rewards
 import ./engine/world/encounters.bend as WorldEncounters
 import ./engine/world/geometry.bend as WorldGeometry
 import ./engine/world/events.bend as WorldEvents
+import ./engine/world/playtest_boot_wire.bend as PlaytestBootWire
 
 # BOOT-1: adding zero preserves the headless accumulator for every Nat state.
 # This is a toolchain/bootstrap law, not a battle or progression specification.
@@ -487,6 +488,25 @@ law world_encounter_invalid_distance_preserves_meter:
     WorldEncounters.MeterRejected{
       WorldEncounters.Meter{Some{7n}, 12n, 98304n, 4n,
         Rng.RngState{1, 2, 3, 4}}} : WorldEncounters.MeterResult}
+
+# M10-BOOT-SEED: the production boot decoder refuses an all-zero xoshiro state
+# before any world session can be constructed from creator-authored content.
+law m10_boot_seed:
+  {PlaytestBootWire.decode_tokens(
+      [11, 2, 123, 1, 0, 1024, 0, 0, 0, 1024, 0, 0, 0, 0,
+        60, 0, 0]) ==
+    PlaytestBootWire.BootRejected{
+      "identity, map, coordinate, RNG, or Wait pacing is invalid"}
+    : PlaytestBootWire.DecodeResult}
+
+# M10-TYPED-MOVE-ONE-SOURCE: the typed runtime accepts a legal single damage
+# component and rejects empty or over-limit component snapshots at submission.
+law battle_typed_move_component_bounds:
+  {Bool.and(Runtime.typed_components_valid([Multi.TypeId{1n}]),
+    Bool.and(Bool.not(Runtime.typed_components_valid([])),
+      Bool.not(Runtime.typed_components_valid([Multi.TypeId{0n},
+        Multi.TypeId{1n}, Multi.TypeId{2n}, Multi.TypeId{3n},
+        Multi.TypeId{4n}])))) == True{} : Bool}
 
 
 # Approved future proof obligations (2026-09-21 decision packet):

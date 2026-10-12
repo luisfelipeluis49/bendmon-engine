@@ -1,0 +1,16 @@
+{
+  "schemaVersion": "content-0",
+  "id": "original:demo",
+  "name": "Mosslight Meadow Demo",
+  "ruleset": "unassigned",
+  "entryMap": "original:glade",
+  "entryPoint": {
+    "x": 1024,
+    "y": 0,
+    "z": 1024
+  },
+  "starter": {
+    "species": "original:mosskip",
+    "level": 5
+  }
+}

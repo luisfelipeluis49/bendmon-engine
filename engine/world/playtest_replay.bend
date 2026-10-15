@@ -24,9 +24,82 @@ type ReplayResult is Data:
   ReplayDialogueRejected{session: Session.WorldSession, accepted: Nat,
     dialogue_id: Nat, line_index: Nat}
 
+type TracePoint is Data:
+  TracePoint{command_index: Nat, logical_tick: Nat}
+
+type TracedReplay is Data:
+  TracedReplay{result: ReplayResult, trace: List<&2, TracePoint>}
+
 type DialogueProgress is Data:
   DialogueProgress{cursor: Dialogue.Cursor, dialogue_id: Nat,
     line_index: Nat, closed: Bool}
+
+def result_accepted(result: ReplayResult) -> Nat:
+  match result:
+    case Replayed{session, accepted, cues}: accepted
+    case ReplayRejected{session, accepted}: accepted
+    case ReplayEncounter{session, encounter_id, accepted, cues, remaining}:
+      accepted
+    case ReplayedDialogue{session, accepted, cues, dialogue_id, line_index,
+        closed}: accepted
+    case ReplayDialogueRejected{session, accepted, dialogue_id, line_index}:
+      accepted
+
+@unsafe def world_trace_rows(count: Nat, +index: Nat) ->
+  List<&2, TracePoint>:
+  match count:
+    case 0n: []
+    case 1n+rest:
+      TracePoint{index, 0n} <> world_trace_rows(rest, Nat.add(index, 1n))
+
+def traced_from(+result: ReplayResult, +index: Nat) -> TracedReplay:
+  TracedReplay{result,
+    world_trace_rows(Nat.sub(result_accepted(result), index), index)}
+
+def traced(result: ReplayResult) -> TracedReplay:
+  traced_from(result, 0n)
+
+@unsafe def trace_reverse(rows: List<&2, TracePoint>,
+  acc: List<&2, TracePoint>) -> List<&2, TracePoint>:
+  match rows:
+    case Nil{}: acc
+    case row <> rest: trace_reverse(rest, row <> acc)
+
+@unsafe def world_trace_fold(commands: List<&2, Commands.WorldCommand>,
+  +catalog: Catalog.Catalog, session: Session.WorldSession, accepted: Nat,
+  +index: Nat, +rows: List<&2, TracePoint>,
+  cues: List<&2, Presentation.Cue>) -> TracedReplay:
+  match commands:
+    case Nil{}:
+      TracedReplay{Replayed{session, accepted, cues}, trace_reverse(rows, [])}
+    case command <> rest:
+      +count = Nat.add(accepted, 1n)
+      world_trace_route(Commands.run(catalog, session, command, count),
+        rest, catalog, count, index, rows)
+
+@unsafe def world_trace_route(result: Session.PresentedResult,
+  rest: List<&2, Commands.WorldCommand>, +catalog: Catalog.Catalog,
+  count: Nat, +index: Nat, rows: List<&2, TracePoint>) -> TracedReplay:
+  match result:
+    case Session.PresentedResult{Session.Advanced{state}, cues}:
+      world_trace_fold(rest, catalog, state, count, Nat.add(index, 1n),
+        TracePoint{index, 0n} <> rows, cues)
+    case Session.PresentedResult{Session.EncounterPending{state, encounter_id}, cues}:
+      TracedReplay{ReplayEncounter{state, encounter_id, count, cues, rest},
+        trace_reverse(TracePoint{index, 0n} <> rows, [])}
+    case Session.PresentedResult{Session.Rejected{state}, cues}:
+      TracedReplay{ReplayRejected{state, Nat.sub(count, 1n)},
+        trace_reverse(rows, [])}
+    case Session.PresentedResult{Session.EventAborted{state, diagnostic}, cues}:
+      TracedReplay{ReplayRejected{state, Nat.sub(count, 1n)}, trace_reverse(rows, [])}
+    case Session.PresentedResult{Session.EncounterReady{state, species, level}, cues}:
+      TracedReplay{ReplayRejected{state, Nat.sub(count, 1n)}, trace_reverse(rows, [])}
+    case Session.PresentedResult{Session.BattleAdvanced{state, status, events}, cues}:
+      TracedReplay{ReplayRejected{state, Nat.sub(count, 1n)}, trace_reverse(rows, [])}
+    case Session.PresentedResult{Session.BattleReturned{state, status, events, captures}, cues}:
+      TracedReplay{ReplayRejected{state, Nat.sub(count, 1n)}, trace_reverse(rows, [])}
+    case Session.PresentedResult{Session.BattleChoice{state}, cues}:
+      TracedReplay{ReplayRejected{state, Nat.sub(count, 1n)}, trace_reverse(rows, [])}
 
 def association_dialogue(+map_id: Nat, +npc_id: Nat,
   associations: List<&2, DialogueWire.Association>) -> Maybe<&2, Nat>:
@@ -65,7 +138,7 @@ def interaction_dialogue(catalog: Catalog.Catalog,
   +facing_x: Geometry.Coord, +facing_z: Geometry.Coord,
   associations: List<&2, DialogueWire.Association>) -> Maybe<&2, Nat>:
   match session:
-    case Session.WorldSession{+world, None{}}:
+    case Session.WorldSession{+world, progression}:
       dialogue_for_interaction(WorldCommands.interaction_valid(catalog,
         world, npc_id, facing_x, facing_z), session_map(session), npc_id,
         associations)
@@ -96,7 +169,7 @@ def interaction_progress(result: Maybe<&2, Nat>,
 
 def event_bridge(session: Session.WorldSession) -> Maybe<&2, EventBridge.State>:
   match session:
-    case Session.WorldSession{world, None{}}: Some{world}
+    case Session.WorldSession{world, progression}: Some{world}
     case _: None{}
 
 def start_interaction_command(session: Session.WorldSession,
@@ -247,6 +320,120 @@ def final_closed(session: Session.WorldSession, accepted: Nat,
       normal_result(Commands.run(catalog, session, command, count), rest,
         catalog, count, progress, records, associations)
 
+@unsafe def dialogue_trace_rows(commands: List<&2, Commands.WorldCommand>,
+  +catalog: Catalog.Catalog, +session: Session.WorldSession, +accepted: Nat,
+  +progress: DialogueProgress, +cues: List<&2, Presentation.Cue>,
+  +records: List<&2, Dialogue.Record>,
+  +associations: List<&2, DialogueWire.Association>,
+  +rows: List<&2, TracePoint>) -> TracedReplay:
+  match commands:
+    case Nil{}:
+      TracedReplay{final_dialogue(session, accepted, cues, progress),
+        trace_reverse(rows, [])}
+    case command <> rest:
+      dialogue_trace_command(rest, catalog, session,
+        Nat.add(accepted, 1n), progress, cues, records, associations,
+        rows, command)
+
+@unsafe def dialogue_trace_command(rest: List<&2, Commands.WorldCommand>,
+  +catalog: Catalog.Catalog, +session: Session.WorldSession, +count: Nat,
+  +progress: DialogueProgress, +cues: List<&2, Presentation.Cue>,
+  +records: List<&2, Dialogue.Record>,
+  +associations: List<&2, DialogueWire.Association>,
+  +rows: List<&2, TracePoint>, command: Commands.WorldCommand) -> TracedReplay:
+  match progress command:
+    case DialogueProgress{Dialogue.Showing{+id, +remaining}, +active_id,
+        +line_index, closed} Commands.PlayAdvanceDialogue{}:
+      dialogue_trace_advance(dialogue_advance_progress(progress), rest,
+        catalog, session, count, active_id, line_index, records,
+        associations, rows)
+    case DialogueProgress{Dialogue.Showing{+id, +remaining}, +active_id,
+        +line_index, closed} _:
+      dialogue_trace_reject(session, Nat.sub(count, 1n), active_id,
+        line_index, rows)
+    case DialogueProgress{cursor, +active_id, +line_index, closed}
+         Commands.PlayAdvanceDialogue{}:
+      dialogue_trace_reject(session, Nat.sub(count, 1n), active_id,
+        line_index, rows)
+    case DialogueProgress{cursor, +active_id, +line_index, closed}
+         Commands.PlayInteract{+npc_id, +facing_x, +facing_z}:
+      dialogue_trace_start(rest, catalog, session, count, progress, cues,
+        records, associations, rows,
+        start_interaction_command(session, catalog, npc_id, facing_x,
+          facing_z, associations, records),
+        Commands.PlayInteract{npc_id, facing_x, facing_z})
+    case DialogueProgress{cursor, active_id, line_index, closed} _:
+      dialogue_trace_route(Commands.run(catalog, session, command, count),
+        rest, catalog, count, progress, records, associations, rows)
+
+@unsafe def dialogue_trace_advance(result: Maybe<&2, DialogueProgress>,
+  rest: List<&2, Commands.WorldCommand>, +catalog: Catalog.Catalog,
+  +session: Session.WorldSession, +count: Nat, dialogue_id: Nat,
+  line_index: Nat, +records: List<&2, Dialogue.Record>,
+  +associations: List<&2, DialogueWire.Association>,
+  +rows: List<&2, TracePoint>) -> TracedReplay:
+  match result:
+    case None{}:
+      dialogue_trace_reject(session, Nat.sub(count, 1n), dialogue_id,
+        line_index, rows)
+    case Some{next}:
+      dialogue_trace_rows(rest, catalog, session, count, next, [], records,
+        associations, TracePoint{Nat.sub(count, 1n), 0n} <> rows)
+
+@unsafe def dialogue_trace_start(rest: List<&2, Commands.WorldCommand>,
+  +catalog: Catalog.Catalog, +session: Session.WorldSession, +count: Nat,
+  +progress: DialogueProgress, +cues: List<&2, Presentation.Cue>,
+  +records: List<&2, Dialogue.Record>,
+  +associations: List<&2, DialogueWire.Association>,
+  +rows: List<&2, TracePoint>, started: Maybe<&2, DialogueProgress>,
+  command: Commands.WorldCommand) -> TracedReplay:
+  match started:
+    case Some{next}:
+      dialogue_trace_rows(rest, catalog, session, count, next, [], records,
+        associations, TracePoint{Nat.sub(count, 1n), 0n} <> rows)
+    case None{}:
+      dialogue_trace_route(Commands.run(catalog, session, command, count),
+        rest, catalog, count, progress, records, associations, rows)
+
+@unsafe def dialogue_trace_route(result: Session.PresentedResult,
+  rest: List<&2, Commands.WorldCommand>, +catalog: Catalog.Catalog,
+  +count: Nat, +progress: DialogueProgress,
+  +records: List<&2, Dialogue.Record>,
+  +associations: List<&2, DialogueWire.Association>,
+  +rows: List<&2, TracePoint>) -> TracedReplay:
+  match result:
+    case Session.PresentedResult{Session.Advanced{state}, cues}:
+      dialogue_trace_rows(rest, catalog, state, count, progress, cues,
+        records, associations, TracePoint{Nat.sub(count, 1n), 0n} <> rows)
+    case Session.PresentedResult{Session.EncounterPending{state,
+        encounter_id}, cues}:
+      TracedReplay{ReplayEncounter{state, encounter_id, count, cues, rest},
+        trace_reverse(TracePoint{Nat.sub(count, 1n), 0n} <> rows, [])}
+    case Session.PresentedResult{Session.Rejected{state}, cues}:
+      dialogue_trace_reject(state, Nat.sub(count, 1n), progress_id(progress),
+        progress_index(progress), rows)
+    case Session.PresentedResult{Session.EventAborted{state, diagnostic}, cues}:
+      dialogue_trace_reject(state, Nat.sub(count, 1n), progress_id(progress),
+        progress_index(progress), rows)
+    case Session.PresentedResult{Session.EncounterReady{state, species, level}, cues}:
+      dialogue_trace_reject(state, Nat.sub(count, 1n), progress_id(progress),
+        progress_index(progress), rows)
+    case Session.PresentedResult{Session.BattleAdvanced{state, status, events}, cues}:
+      dialogue_trace_reject(state, Nat.sub(count, 1n), progress_id(progress),
+        progress_index(progress), rows)
+    case Session.PresentedResult{Session.BattleReturned{state, status, events, captures}, cues}:
+      dialogue_trace_reject(state, Nat.sub(count, 1n), progress_id(progress),
+        progress_index(progress), rows)
+    case Session.PresentedResult{Session.BattleChoice{state}, cues}:
+      dialogue_trace_reject(state, Nat.sub(count, 1n), progress_id(progress),
+        progress_index(progress), rows)
+
+def dialogue_trace_reject(session: Session.WorldSession, accepted: Nat,
+  dialogue_id: Nat, line_index: Nat,
+  rows: List<&2, TracePoint>) -> TracedReplay:
+  TracedReplay{ReplayDialogueRejected{session, accepted, dialogue_id,
+    line_index}, trace_reverse(rows, [])}
+
 @unsafe def next(rest: List<&2, Commands.WorldCommand>, catalog: Catalog.Catalog,
   state: Session.WorldSession, count: Nat,
   cues: List<&2, Presentation.Cue>) -> ReplayResult:
@@ -311,6 +498,20 @@ def run(+commands: List<&2, Commands.WorldCommand>,
   replay_checked(Nat.is_le(List.length(&2, Commands.WorldCommand,
     commands), 4096n), commands, catalog, session)
 
+# World, event and dialogue clocks pause between battles, so their authoritative
+# post-command tick is zero. Indices identify accepted replay commands only.
+def traced_checked(allowed: Bool,
+  commands: List<&2, Commands.WorldCommand>, catalog: Catalog.Catalog,
+  session: Session.WorldSession) -> TracedReplay:
+  match allowed:
+    case False{}: TracedReplay{ReplayRejected{session, 0n}, []}
+    case True{}: world_trace_fold(commands, catalog, session, 0n, 0n, [], [])
+
+def run_traced(+commands: List<&2, Commands.WorldCommand>,
+  catalog: Catalog.Catalog, session: Session.WorldSession) -> TracedReplay:
+  traced_checked(Nat.is_le(List.length(&2, Commands.WorldCommand,
+    commands), 4096n), commands, catalog, session)
+
 # Dialogue-aware replay is used by M10 after the host has identity-checked the
 # authored dialogue payload. It keeps dialogue state local to one replay.
 def dialogue_run_checked(allowed: Bool,
@@ -330,6 +531,41 @@ def run_dialogue(+commands: List<&2, Commands.WorldCommand>,
   associations: List<&2, DialogueWire.Association>) -> ReplayResult:
   dialogue_run_checked(Nat.is_le(List.length(&2, Commands.WorldCommand,
     commands), 4096n), commands, catalog, session, records, associations)
+
+def dialogue_trace_checked(allowed: Bool,
+  +commands: List<&2, Commands.WorldCommand>, catalog: Catalog.Catalog,
+  session: Session.WorldSession, records: List<&2, Dialogue.Record>,
+  associations: List<&2, DialogueWire.Association>, accepted_before: Nat)
+  -> TracedReplay:
+  match allowed:
+    case False{}:
+      TracedReplay{ReplayDialogueRejected{session, 0n, 0n, 0n}, []}
+    case True{}:
+      dialogue_trace_rows(commands, catalog, session, accepted_before,
+        DialogueProgress{Dialogue.Closed{}, 0n, 0n, True{}}, [], records,
+        associations, [])
+
+def dialogue_trace_from_checked(allowed: Bool,
+  +commands: List<&2, Commands.WorldCommand>, catalog: Catalog.Catalog,
+  session: Session.WorldSession, records: List<&2, Dialogue.Record>,
+  associations: List<&2, DialogueWire.Association>, accepted_before: Nat)
+  -> TracedReplay:
+  match allowed:
+    case False{}:
+      TracedReplay{ReplayDialogueRejected{session, accepted_before, 0n, 0n}, []}
+    case True{}:
+      dialogue_trace_rows(commands, catalog, session, accepted_before,
+        DialogueProgress{Dialogue.Closed{}, 0n, 0n, True{}}, [], records,
+        associations, [])
+
+
+def run_dialogue_traced(+commands: List<&2, Commands.WorldCommand>,
+  catalog: Catalog.Catalog, session: Session.WorldSession,
+  records: List<&2, Dialogue.Record>,
+  associations: List<&2, DialogueWire.Association>) -> TracedReplay:
+  dialogue_trace_checked(Nat.is_le(List.length(&2, Commands.WorldCommand,
+    commands), 4096n), commands, catalog, session, records, associations,
+    0n)
 
 def dialogue_from_checked(allowed: Bool,
   +commands: List<&2, Commands.WorldCommand>,
@@ -355,3 +591,12 @@ def run_dialogue_from(+commands: List<&2, Commands.WorldCommand>,
   dialogue_from_checked(Nat.is_le(Nat.add(accepted_before,
     List.length(&2, Commands.WorldCommand, commands)), 4096n),
     commands, catalog, session, records, associations, accepted_before)
+
+def run_dialogue_from_traced(+commands: List<&2, Commands.WorldCommand>,
+  catalog: Catalog.Catalog, session: Session.WorldSession,
+  records: List<&2, Dialogue.Record>,
+  associations: List<&2, DialogueWire.Association>,
+  +accepted_before: Nat) -> TracedReplay:
+  dialogue_trace_from_checked(Nat.is_le(Nat.add(accepted_before,
+    List.length(&2, Commands.WorldCommand, commands)), 4096n), commands,
+    catalog, session, records, associations, accepted_before)

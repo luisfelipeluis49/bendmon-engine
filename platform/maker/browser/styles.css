@@ -49,6 +49,10 @@ h2 { font-size: 1rem; margin: 0 0 .7rem; }
 .playtest-dialogue p { margin: .35rem 0 .6rem; }
 .playtest-controls { align-items: center; display: flex; flex-wrap: wrap; gap: .5rem; margin: .7rem 0; }
 .playtest-controls label { align-items: center; display: flex; gap: .4rem; }
+.playtest-persistence { background: #142522; border: 1px solid #50716c; border-radius: 6px; margin: .8rem 0; padding: .7rem; }
+.playtest-persistence h3 { font-size: 1rem; margin: 0; }
+.file-button { background: #253b38; border: 1px solid #64877e; border-radius: 5px; cursor: pointer; padding: .45rem .65rem; }
+.file-button input { max-width: 13rem; }
 #toast { bottom: .8rem; color: #ffdf9c; min-height: 1.4rem; position: fixed; right: 1rem; }
 @media (max-width: 1100px) { .workspace { grid-template-columns: 160px minmax(350px, 1fr); } .inspector { grid-column: 2; border-top: 1px solid #3b5756; } }
 @media (max-width: 640px) { .topbar { align-items: stretch; flex-direction: column; } .top-actions { justify-content: flex-start; } .workspace { display: block; } .sidebar { border-right: 0; } .sidebar button { display: inline-block; width: auto; } .center { padding: .8rem; } .inspector { border-left: 0; } }

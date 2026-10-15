@@ -8,6 +8,7 @@ import ../m7/playable.bend as Playable
 import ./exploration.bend as Exploration
 import ./encounter_handoff.bend as Handoff
 import ./world_session.bend as Session
+import ../m7/persistent_state.bend as Persistent
 
 type EncounterResult is Data:
   Started{session: Session.WorldSession, species_id: Nat, level: Nat}
@@ -115,7 +116,7 @@ def prepared_parts(prepared: Session.PreparedSession,
         Handoff.Prepared{selected_world, encounter_id, +wild_id, level,
           source_rng}}:
       match selected_world:
-        case Exploration.State{map_id, point, meter, pending, identity}:
+        case Exploration.State{map_id, point, meter, pending, +identity}:
           paired_records(species_by_id(starter_id, species_rows(species)),
             species_by_id(wild_id, species_rows(species)), prepared, species,
             moves, starter_id, starter_level, wait_ticks)
@@ -129,11 +130,143 @@ def preparation(result: Session.PrepareResult,
       prepared_parts(value, species, moves, starter_id, starter_level,
         wait_ticks)
 
+# This builder can only create the initial starter/wild party. After M7 returns,
+# rejecting here prevents a later encounter from silently replacing ownership.
+def starter_boot_allowed(session: Session.WorldSession) -> Bool:
+  match session:
+    case Session.WorldSession{world, None{}}: True{}
+    case _: False{}
+
+def start_checked(allowed: Bool, +session: Session.WorldSession,
+  tables: List<&2, Handoff.EncounterTable>, species: Species.Catalog,
+  moves: Moves.Catalog, starter_id: Nat, starter_level: U32,
+  wait_ticks: U32) -> EncounterResult:
+  match allowed:
+    case True{}:
+      preparation(Session.prepare_encounter(tables, session), species, moves,
+        starter_id, starter_level, wait_ticks)
+    case False{}: Rejected{}
+
 # Selects an encounter once, builds the trusted starter/wild M7 snapshot from
 # identity-matched inert catalogs, then lets WorldSession validate the handoff.
 def start(+session: Session.WorldSession,
   tables: List<&2, Handoff.EncounterTable>, species: Species.Catalog,
   moves: Moves.Catalog, starter_id: Nat, starter_level: U32,
   wait_ticks: U32) -> EncounterResult:
-  preparation(Session.prepare_encounter(tables, session), species, moves,
+  start_checked(starter_boot_allowed(session), session, tables, species, moves,
     starter_id, starter_level, wait_ticks)
+
+# Continuation starts from the settled progression snapshot left by M7. The
+# persistent builder reconstructs the active owner from the roster and carries
+# economy, owned inputs, and ledger into the next battle.
+def continuation_allowed(session: Session.WorldSession) -> Bool:
+  match session:
+    case Session.WorldSession{world, Some{progression}}:
+      Persistent.state_valid(progression)
+    case _: False{}
+
+def continuation_playable(playable: Maybe<Playable.PlayableSession>,
+  prepared: Session.PreparedSession, wild_id: Nat,
+  wild_level: Nat) -> EncounterResult:
+  match playable:
+    case None{}: Rejected{}
+    case Some{playable}:
+      started_result(Session.begin_encounter(prepared, playable), wild_id,
+        wild_level)
+
+def completed_from_continuation(progression: Persistent.PersistentState,
+  pair: BattleBoot.BootPair, species: Species.Catalog,
+  moves: Moves.Catalog, prepared: Session.PreparedSession,
+  wild_id: Nat, wild_level: Nat) -> EncounterResult:
+  continuation_playable(PlayableBoot.build_continuation(pair, progression,
+    species, moves), prepared, wild_id, wild_level)
+
+def continuation_result(pair: BattleBoot.BootResult,
+  progression: Persistent.PersistentState,
+  species: Species.Catalog, moves: Moves.Catalog,
+  prepared: Session.PreparedSession, wild_id: Nat, wild_level: Nat) -> EncounterResult:
+  match pair:
+    case BattleBoot.BootRejected{}: Rejected{}
+    case BattleBoot.BootReady{value}:
+      completed_from_continuation(progression, value, species, moves,
+        prepared, wild_id, wild_level)
+
+def continuation_built(result: Session.PrepareResult,
+  pair: BattleBoot.BootPair, progression: Persistent.PersistentState,
+  species: Species.Catalog, moves: Moves.Catalog) -> EncounterResult:
+  match result:
+    case Session.PrepareRejected{state}: Rejected{}
+    case Session.Prepared{value, species_id, level}:
+      continuation_result(BattleBoot.BootReady{pair}, progression, species,
+        moves, value, species_id, level)
+
+def continuation_session(allowed: Bool, +session: Session.WorldSession,
+  progression: Persistent.PersistentState,
+  tables: List<&2, Handoff.EncounterTable>, +pair: BattleBoot.BootPair,
+  species: Species.Catalog, moves: Moves.Catalog) -> EncounterResult:
+  match allowed:
+    case False{}: Rejected{}
+    case True{}:
+      continuation_built(Session.prepare_encounter(tables, session), pair,
+        progression, species, moves)
+
+# The host supplies the selected pair from this prepared encounter. Handoff
+# validation still checks its encounter, selected species, identity, and RNG.
+def start_continuation(+session: Session.WorldSession,
+  tables: List<&2, Handoff.EncounterTable>, +pair: BattleBoot.BootPair,
+  species: Species.Catalog, moves: Moves.Catalog) -> EncounterResult:
+  match session:
+    case Session.WorldSession{world, Some{progression}}:
+      continuation_session(continuation_allowed(session), session,
+        progression, tables, pair, species, moves)
+    case _: Rejected{}
+
+def persistent_pair_ready(pair: BattleBoot.BootResult,
+  progression: Persistent.PersistentState, species: Species.Catalog,
+  moves: Moves.Catalog, prepared: Session.PreparedSession, wild_id: Nat,
+  level: Nat) -> EncounterResult:
+  continuation_result(pair, progression, species, moves, prepared, wild_id,
+    level)
+
+def persistent_prepared(+progression: Persistent.PersistentState,
+  prepared: Session.PreparedSession, +species: Species.Catalog,
+  moves: Moves.Catalog, wait_ticks: U32) -> EncounterResult:
+  match prepared:
+    case Session.PreparedSession{world,
+        Handoff.Prepared{selected_world, +encounter_id, +wild_id, +level,
+          +source_rng}}:
+      match selected_world:
+        case Exploration.State{map_id, point, meter, pending, +identity}:
+          persistent_pair_ready(PlayableBoot.build_continuation_pair(
+            progression, species, wild_id, level, encounter_id,
+            U32.from_nat(identity), source_rng, wait_ticks), progression,
+            species, moves, prepared, wild_id, level)
+
+def persistent_preparation(result: Session.PrepareResult,
+  progression: Persistent.PersistentState, species: Species.Catalog,
+  moves: Moves.Catalog, wait_ticks: U32) -> EncounterResult:
+  match result:
+    case Session.PrepareRejected{state}: Rejected{}
+    case Session.Prepared{value, species_id, level}:
+      persistent_prepared(progression, value, species, moves, wait_ticks)
+
+def persistent_start_checked(allowed: Bool, +session: Session.WorldSession,
+  progression: Persistent.PersistentState,
+  tables: List<&2, Handoff.EncounterTable>, species: Species.Catalog,
+  moves: Moves.Catalog, wait_ticks: U32) -> EncounterResult:
+  match allowed:
+    case False{}: Rejected{}
+    case True{}:
+      persistent_preparation(Session.prepare_encounter(tables, session),
+        progression, species, moves, wait_ticks)
+
+# Starts the selected encounter directly from the returned progression
+# snapshot, preserving the saved first-party member and reward state.
+def start_persistent(+session: Session.WorldSession,
+  tables: List<&2, Handoff.EncounterTable>, species: Species.Catalog,
+  moves: Moves.Catalog, wait_ticks: U32) -> EncounterResult:
+  match session:
+    case Session.WorldSession{world, Some{progression}}:
+      persistent_start_checked(continuation_allowed(session), session,
+        progression, tables, species, moves, wait_ticks)
+    case _: Rejected{}

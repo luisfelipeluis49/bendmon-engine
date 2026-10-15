@@ -278,6 +278,121 @@ async function exportDraft() {
 async function startPlaytest() {
   $("#playtest-panel").hidden = false;
   $("#playtest-content").textContent = "A playtest uses the current validated draft; choose the canonical RNG words above.";
+  updatePersistenceControls();
+}
+
+function updatePersistenceControls() {
+  $("#playtest-save-run").disabled = !livePlaytest?.sessionId || livePlaytest.saveAvailable !== true || playtestBusy;
+  $("#playtest-load-run").disabled = !activeProject || playtestBusy;
+  $("#playtest-migrate-save").disabled = !activeProject || playtestBusy;
+  $("#playtest-replay-download").disabled = !livePlaytest?.sessionId || playtestBusy;
+  $("#playtest-replay-verify").disabled = !activeProject || !$("#playtest-replay-file").files?.length || playtestBusy;
+}
+
+function persistenceStatus(message) {
+  const target = $("#playtest-live").hidden ? $("#playtest-content") : $("#playtest-status");
+  target.textContent = message;
+}
+
+function base64FromBytes(bytes) {
+  let binary = "";
+  for (let offset = 0; offset < bytes.length; offset += 0x8000) {
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000));
+  }
+  return btoa(binary);
+}
+
+function selectedSaveSlot() {
+  return `manual-${$("#playtest-save-slot").value.padStart(2, "0")}`;
+}
+
+async function savePlaytest() {
+  if (!livePlaytest?.sessionId || livePlaytest.saveAvailable !== true) {
+    persistenceStatus("Saving is available only at a stable world boundary.");
+    return;
+  }
+  try {
+    const slot = selectedSaveSlot();
+    await request(`/api/playtests/${encodeURIComponent(livePlaytest.sessionId)}/saves`, "POST", {
+      slot,
+    });
+    persistenceStatus(`Run saved in slot ${$("#playtest-save-slot").value}.`);
+  } catch (error) { persistenceStatus(`Save failed: ${error.message}`); }
+}
+
+async function loadPlaytest() {
+  if (!activeProject) return;
+  try {
+    const checked = await validateDraft();
+    if (!checked.valid) {
+      persistenceStatus("Load unavailable: fix draft validation errors first.");
+      return;
+    }
+    const slot = selectedSaveSlot();
+    const result = await request(
+      `/api/projects/${encodeURIComponent(activeProject)}/saves/${slot}/load`,
+      "POST", { contentHash: checked.contentHash },
+    );
+    renderPlaytest(result);
+    persistenceStatus(`Loaded run from slot ${slot}.`);
+  } catch (error) { persistenceStatus(`Load failed: ${error.message}`); }
+}
+
+async function migrateLegacySave() {
+  if (!activeProject) return;
+  try {
+    const checked = await validateDraft();
+    if (!checked.valid) {
+      persistenceStatus("Migration unavailable: fix draft validation errors first.");
+      return;
+    }
+    const slot = selectedSaveSlot();
+    const result = await request(
+      `/api/projects/${encodeURIComponent(activeProject)}/saves/${slot}/migrate`,
+      "POST", {
+        contentHash: checked.contentHash,
+        waitTicks: Number($("#playtest-wait").value),
+      },
+    );
+    renderPlaytest(result);
+    const outcome = result.recovered
+      ? `M8 save migrated and resumed from the recovery copy in ${slot}.`
+      : `M8 save migrated and resumed from ${slot}; the original is retained as its recovery copy.`;
+    persistenceStatus(outcome);
+  } catch (error) { persistenceStatus(`M8 save migration failed: ${error.message}`); }
+}
+
+async function downloadPlaytestReplay() {
+  if (!livePlaytest?.sessionId) return;
+  try {
+    const result = await request(`/api/playtests/${encodeURIComponent(livePlaytest.sessionId)}/replay`);
+    if (typeof result.replayBase64 !== "string") throw new Error("Replay response did not contain replayBase64");
+    const binary = atob(result.replayBase64);
+    const bytes = Uint8Array.from(binary, character => character.charCodeAt(0));
+    const url = URL.createObjectURL(new Blob([bytes], { type: "application/json" }));
+    const link = node("a", "", "");
+    link.href = url; link.download = `playtest-${livePlaytest.contentHash?.slice(0, 12) || "run"}.json`;
+    link.click(); URL.revokeObjectURL(url);
+    persistenceStatus("Replay downloaded.");
+  } catch (error) { persistenceStatus(`Replay download failed: ${error.message}`); }
+}
+
+async function verifyImportedReplay() {
+  const file = $("#playtest-replay-file").files?.[0];
+  if (!file || !activeProject) return;
+  try {
+    const checked = await validateDraft();
+    if (!checked.valid) {
+      persistenceStatus("Replay verification unavailable: fix draft validation errors first.");
+      return;
+    }
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    const result = await request(
+      `/api/projects/${encodeURIComponent(activeProject)}/replays/verify`, "POST",
+      { contentHash: checked.contentHash, replayBase64: base64FromBytes(bytes) },
+    );
+    persistenceStatus(result.verified === false ? "Replay verification failed." : "Replay verified against the current project.");
+  } catch (error) { persistenceStatus(`Replay verification failed: ${error.message}`); }
 }
 
 function playtestCueText(cues) {
@@ -299,6 +414,9 @@ function renderPlaytest(result) {
     : result.status === "encounter"
       ? `Encounter ${result.encounterId} needs a starter before battle can begin.`
       : `Map ${scene.mapId} · position ${scene.position.x.toFixed(2)}, ${scene.position.z.toFixed(2)} · ${result.acceptedCommands} commands`;
+  if (result.autosaveWarning) {
+    $("#playtest-status").textContent += ` · Autosave failed: ${result.autosaveWarning}`;
+  }
   const dialogue = result.dialogue;
   $("#playtest-dialogue").hidden = !dialogue;
   if (dialogue) {
@@ -327,6 +445,7 @@ function renderPlaytest(result) {
     }
   }
   livePlaytest = { ...result, presentation: content, scene };
+  updatePersistenceControls();
 }
 
 async function sendPlaytestCommand(command) {
@@ -342,7 +461,7 @@ async function sendPlaytestCommand(command) {
     }
     renderPlaytest(result);
   } catch (error) { $("#playtest-status").textContent = error.message; }
-  finally { playtestBusy = false; }
+  finally { playtestBusy = false; updatePersistenceControls(); }
 }
 
 function interactCommand() {
@@ -371,6 +490,7 @@ async function launchPlaytest() {
     renderPlaytest(result);
     $("#playtest-content").textContent = `Playing frozen content ${result.contentHash.slice(0, 12)}.`;
   } catch (error) { $("#playtest-content").textContent = `Playtest unavailable: ${error.message}`; }
+  updatePersistenceControls();
 }
 
 function setupControls() {
@@ -404,6 +524,12 @@ function setupControls() {
   $("#playtest").onclick = () => startPlaytest().catch(error => toast(error.message));
   $("#launch-playtest").onclick = () => launchPlaytest().catch(error => { $("#playtest-content").textContent = error.message; });
   $("#close-playtest").onclick = () => { $("#playtest-panel").hidden = true; };
+  $("#playtest-save-run").onclick = () => savePlaytest();
+  $("#playtest-load-run").onclick = () => loadPlaytest();
+  $("#playtest-migrate-save").onclick = () => migrateLegacySave();
+  $("#playtest-replay-download").onclick = () => downloadPlaytestReplay();
+  $("#playtest-replay-file").onchange = () => updatePersistenceControls();
+  $("#playtest-replay-verify").onclick = () => verifyImportedReplay();
   for (const button of document.querySelectorAll("[data-playtest-move]")) {
     button.onclick = () => {
       const direction = { north: [0, 1024], south: [0, -1024],

@@ -50,6 +50,12 @@ def browser_asset(path: str) -> tuple[str, bytes]:
 def dispatch(service: MakerService, method: str, path: str, body: object) -> dict:
     parts = [unquote(part) for part in path.split("?")[0].strip("/").split("/")]
     if (len(parts) == 4 and parts[:2] == ["api", "playtests"]
+            and parts[3] == "saves" and method == "POST" and isinstance(body, dict)):
+        return service.save_playtest(parts[2], body.get("slot"))
+    if (len(parts) == 4 and parts[:2] == ["api", "playtests"]
+            and parts[3] == "replay" and method == "GET"):
+        return service.export_replay(parts[2])
+    if (len(parts) == 4 and parts[:2] == ["api", "playtests"]
             and parts[3] == "commands" and method == "POST" and isinstance(body, dict)):
         try:
             command = parse_command(body.get("command"))
@@ -78,6 +84,16 @@ def dispatch(service: MakerService, method: str, path: str, body: object) -> dic
         if tail == ["playtest"] and method == "POST" and isinstance(body, dict):
             return service.playtest_project(project_id, body.get("rngState"),
                                             body.get("waitTicks"), body.get("contentHash"))
+        if (len(tail) == 3 and tail[0] == "saves" and tail[2] == "load"
+                and method == "POST" and isinstance(body, dict)):
+            return service.load_playtest(project_id, tail[1], body.get("contentHash"))
+        if (len(tail) == 3 and tail[0] == "saves" and tail[2] == "migrate"
+                and method == "POST" and isinstance(body, dict)):
+            return service.migrate_save(project_id, tail[1], body.get("contentHash"),
+                                        body.get("waitTicks"))
+        if tail == ["replays", "verify"] and method == "POST" and isinstance(body, dict):
+            return service.verify_project_replay(project_id, body.get("contentHash"),
+                                                 body.get("replayBase64"))
         if tail == ["assets"] and method == "POST" and isinstance(body, dict):
             return service.import_asset(project_id, body.get("path"), body.get("mediaType"),
                                         body.get("contentBase64"), body.get("assetId"))

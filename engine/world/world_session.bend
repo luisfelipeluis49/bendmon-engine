@@ -9,6 +9,7 @@ import ./battle_bridge.bend as BattleBridge
 import ./events.bend as Events
 import ./presentation_cues.bend as Presentation
 import ../m7/playable.bend as Playable
+import ../m7/persistent_state.bend as Persistent
 import ../battle/runtime.bend as Runtime
 import ../battle/model.bend as Battle
 import ../m7/battle.bend as M7
@@ -18,7 +19,8 @@ import ../m7/session.bend as Session
 # callers. Battling stores only the persistent event world and battle token;
 # the battle bridge already owns its exploration snapshot.
 type WorldSession is Data:
-  WorldSession{world: EventBridge.State, battle: Maybe<&2, Unit>}
+  WorldSession{world: EventBridge.State,
+    progression: Maybe<&2, Persistent.PersistentState>}
   Battling{persistent: Events.World, battle: BattleBridge.State}
 
 type SessionResult is Data:
@@ -75,21 +77,40 @@ def command_route(result: Commands.CommandResult, ordinal: Nat) -> PresentedResu
     case Commands.Rejected{state}:
       PresentedResult{Rejected{WorldSession{state, None{}}}, []}
 
+def carried_progression(session: WorldSession) -> Maybe<&2, Persistent.PersistentState>:
+  match session:
+    case WorldSession{world, progression}: progression
+    case _: None{}
+
+def carry_presented(result: PresentedResult,
+  progression: Maybe<&2, Persistent.PersistentState>) -> PresentedResult:
+  match result:
+    case PresentedResult{Advanced{WorldSession{world, old}}, cues}:
+      PresentedResult{Advanced{WorldSession{world, progression}}, cues}
+    case PresentedResult{Rejected{WorldSession{world, old}}, cues}:
+      PresentedResult{Rejected{WorldSession{world, progression}}, cues}
+    case PresentedResult{EncounterPending{WorldSession{world, old}, id}, cues}:
+      PresentedResult{EncounterPending{WorldSession{world, progression}, id}, cues}
+    case PresentedResult{EventAborted{WorldSession{world, old}, diagnostic}, cues}:
+      PresentedResult{EventAborted{WorldSession{world, progression}, diagnostic}, cues}
+    case other: other
+
 def command_ready(ready: Bool, catalog: Catalog.Catalog, +old: WorldSession,
   command: Commands.Command, ordinal: Nat) -> PresentedResult:
   match ready:
     case False{}: PresentedResult{Rejected{old}, []}
     case True{}:
       match old:
-        case WorldSession{world, None{}}:
+        case WorldSession{world, progression}:
           command_route(Commands.run(command, catalog, world), ordinal)
         case _: PresentedResult{Rejected{old}, []}
 
 def command_presented(catalog: Catalog.Catalog, +old: WorldSession,
   command: Commands.Command, ordinal: Nat) -> PresentedResult:
   match old:
-    case WorldSession{world, None{}}:
-      command_ready(Bool.not(has_event(world)), catalog, old, command, ordinal)
+    case WorldSession{world, progression}:
+      carry_presented(command_ready(Bool.not(has_event(world)), catalog, old,
+        command, ordinal), carried_progression(old))
     case _: PresentedResult{Rejected{old}, []}
 
 def presented_session(result: PresentedResult) -> SessionResult:
@@ -108,12 +129,12 @@ def replace_world_exploration(old: EventBridge.State,
 
 def move_route(result: Exploration.StepResult, old: WorldSession) -> SessionResult:
   match result old:
-    case Exploration.Moved{state} WorldSession{world, None{}}:
-      Advanced{WorldSession{replace_world_exploration(world, state), None{}}}
+    case Exploration.Moved{state} WorldSession{world, progression}:
+      Advanced{WorldSession{replace_world_exploration(world, state), progression}}
     case Exploration.EncounterReached{state, encounter_id}
-         WorldSession{world, None{}}:
+         WorldSession{world, progression}:
       EncounterPending{WorldSession{replace_world_exploration(world, state),
-        None{}}, encounter_id}
+        progression}, encounter_id}
     case _ _: Rejected{old}
 
 def move_ready(ready: Bool, catalog: Catalog.Catalog, +old: WorldSession,
@@ -122,14 +143,14 @@ def move_ready(ready: Bool, catalog: Catalog.Catalog, +old: WorldSession,
     case False{}: Rejected{old}
     case True{}:
       match old:
-        case WorldSession{EventBridge.State{exploration, persistent, None{}}, None{}}:
+        case WorldSession{EventBridge.State{exploration, persistent, None{}}, progression}:
           move_route(Exploration.move(catalog, exploration, input), old)
         case _: Rejected{old}
 
 def move(catalog: Catalog.Catalog, +old: WorldSession,
   input: Geometry.Input) -> SessionResult:
   match old:
-    case WorldSession{world, None{}}:
+    case WorldSession{world, progression}:
       move_ready(Bool.not(has_event(world)), catalog, old, input)
     case _: Rejected{old}
 
@@ -140,8 +161,9 @@ def event_step_route(result: EventBridge.EventBridgeResult,
 def event_step_presented(+old: WorldSession, input: Events.Input,
   ordinal: Nat) -> PresentedResult:
   match old:
-    case WorldSession{world, None{}}:
-      event_step_route(EventBridge.step(world, input), ordinal)
+    case WorldSession{world, progression}:
+      carry_presented(event_step_route(EventBridge.step(world, input), ordinal),
+        carried_progression(old))
     case _: PresentedResult{Rejected{old}, []}
 
 def event_step(+old: WorldSession, input: Events.Input) -> SessionResult:
@@ -173,7 +195,7 @@ def encounter_world(tables: List<&2, Handoff.EncounterTable>,
     case _: Rejected{WorldSession{world, None{}}}
 
 def encounter(tables: List<&2, Handoff.EncounterTable>,
-  +old: WorldSession, battle: Maybe<Playable.PlayableSession>) -> SessionResult:
+  +old: WorldSession, battle: Maybe<&2, Playable.PlayableSession>) -> SessionResult:
   match old battle:
     case WorldSession{world, None{}} Some{playable}:
       encounter_world(tables, world, playable)
@@ -194,7 +216,7 @@ def prepared(result: Handoff.PrepareResult,
 def prepare_encounter(tables: List<&2, Handoff.EncounterTable>,
   +old: WorldSession) -> PrepareResult:
   match old:
-    case WorldSession{EventBridge.State{+exploration, persistent, None{}}, None{}}:
+    case WorldSession{EventBridge.State{+exploration, persistent, None{}}, progression}:
       prepared(Handoff.prepare(exploration, tables),
         EventBridge.State{exploration, persistent, None{}})
     case _: PrepareRejected{old}
@@ -225,10 +247,11 @@ def advance_battle(+old: WorldSession) -> SessionResult:
       battle_step_route(BattleBridge.step(battle), persistent)
     case _: Rejected{old}
 
-def returned_playable(session: WorldSession) -> Maybe<Playable.PlayableSession>:
-  match session:
-    case Battling{persistent, BattleBridge.State{world, +playable, True{}}}:
-      Some{playable}
+def returned_progression(battle: BattleBridge.State) ->
+  Maybe<&2, Persistent.PersistentState>:
+  match battle:
+    case BattleBridge.State{world, +playable, True{}}:
+      Persistent.project(playable)
     case _: None{}
 
 def returned_exploration(battle: BattleBridge.State) -> Exploration.State:
@@ -240,13 +263,20 @@ def battle_returned(battle: BattleBridge.State) -> Bool:
     case BattleBridge.State{world, playable, True{}}: True{}
     case _: False{}
 
+def resumed_projected(projected: Maybe<&2, Persistent.PersistentState>,
+  persistent: Events.World, battle: BattleBridge.State) -> WorldSession:
+  match projected:
+    case None{}: Battling{persistent, battle}
+    case Some{progression}:
+      WorldSession{EventBridge.State{returned_exploration(battle),
+        persistent, None{}}, Some{progression}}
+
 def resume_returned(done: Bool, persistent: Events.World,
   +battle: BattleBridge.State) -> WorldSession:
   match done:
     case False{}: Battling{persistent, battle}
     case True{}:
-      WorldSession{EventBridge.State{returned_exploration(battle),
-        persistent, None{}}, None{}}
+      resumed_projected(returned_progression(battle), persistent, battle)
 
 def resume_world(session: WorldSession) -> WorldSession:
   match session:

@@ -1,4 +1,4 @@
-"""Subprocess acceptance test for the generic seven-row M10 Bend runtime."""
+"""Subprocess acceptance tests for the M10 Bend runtime response contract."""
 from __future__ import annotations
 
 import json
@@ -18,6 +18,8 @@ from content.m10_command_wire import (AdvanceBattle, AdvanceDialogue,
 from content.m8_binding import SignedCoord
 from maker.playtest import freeze_project, prepare_runtime_wires
 from maker.runtime_request import assemble_runtime_request
+from maker.runtime_process import run_runtime
+from maker.m11_session_codec import build_m11_replay, verify_m11_replay
 from maker.runtime_response import parse_runtime_response
 from presentation.wire import parse_cues, parse_scene
 
@@ -61,10 +63,20 @@ class DynamicRuntimeTests(unittest.TestCase):
         lines = result.stdout.splitlines()
         self.assertEqual(lines[:3], ["M10PLAY2 ACCEPTED", f"IDENTITY {identity}",
                                      "COMMANDS 1"])
-        self.assertEqual(len(lines), 6)
+        self.assertEqual(len(lines), 10)
         self.assertEqual(lines[3], "DIALOGUE 0 0 1")
         self.assertTrue(lines[4].startswith("SCENE "))
         self.assertTrue(lines[5].startswith("CUES "))
+        self.assertTrue(lines[6].startswith("SAVE "))
+        self.assertEqual(lines[7], "PROGRESSION 0")
+        self.assertEqual(lines[8], "TRACE 2,1")
+        self.assertEqual(lines[9], "TRACE_STEP 0,0,0,0")
+        response = parse_runtime_response(result.stdout,
+                                          expected_content_hash=self.wires.content_hash,
+                                          expected_commands=1)
+        self.assertIsNotNone(response.save_snapshot)
+        self.assertEqual(tuple((step.command_index, step.logical_tick)
+                               for step in response.command_trace), ((0, 0),))
         scene = parse_scene(lines[4][6:])
         self.assertEqual((scene.content_identity, scene.map_id, scene.facing),
                          (identity, 1, 0))
@@ -134,6 +146,47 @@ class DynamicRuntimeTests(unittest.TestCase):
             expected_commands=len(returned))
         self.assertEqual(return_response.status, "accepted")
         self.assertIsNone(return_response.scene.battle)
+        self.assertIsNotNone(return_response.save_snapshot)
+        self.assertIsNotNone(return_response.progression)
+        self.assertEqual(len(return_response.command_trace), len(returned))
+        ticks = tuple(step.logical_tick for step in return_response.command_trace)
+        self.assertEqual(ticks, tuple(sorted(ticks)))
+        self.assertGreater(ticks[-1], ticks[0])
+        restored = run_runtime(snapshot, (), executable_path=self.binary,
+                               restore_snapshot=return_response.save_snapshot,
+                               restore_progression=return_response.progression)
+        self.assertEqual(restored.save_snapshot, return_response.save_snapshot)
+        self.assertEqual(restored.progression, return_response.progression)
+        continued = run_runtime(snapshot,
+            (Move(SignedCoord(False, 512), SignedCoord(False, 0),
+                  False, False),), executable_path=self.binary,
+            restore_snapshot=return_response.save_snapshot,
+            restore_progression=return_response.progression)
+        self.assertEqual(continued.status, "accepted")
+        self.assertEqual(continued.progression, return_response.progression)
+        self.assertGreater(continued.scene.x, return_response.scene.x)
+        second_approach = tuple(
+            Move(SignedCoord(index % 2 == 1, 1024),
+                 SignedCoord(False, 0), False, True)
+            for index in range(317))
+        second = run_runtime(snapshot, second_approach,
+                             executable_path=self.binary,
+                             restore_snapshot=return_response.save_snapshot,
+                             restore_progression=return_response.progression)
+        self.assertEqual(second.status, "battle")
+        self.assertIsNotNone(second.scene.battle)
+        self.assertEqual(len(second.command_trace), len(second_approach))
+        saved_hp = return_response.progression.owned[0].individual.current_hp
+        self.assertEqual(next(actor.hp for actor in second.scene.battle.actors
+                              if actor.id == 0), saved_hp)
+        replay = build_m11_replay(snapshot, second_approach,
+                                  engine_build="m11-1",
+                                  command_trace=second.command_trace,
+                                  restore_snapshot=return_response.save_snapshot,
+                                  restore_progression=return_response.progression)
+        verified = verify_m11_replay(replay, snapshot,
+                                     executable_path=str(self.binary))
+        self.assertEqual(verified.response.status, "battle")
         moved = returned + (Move(SignedCoord(False, 512),
                                  SignedCoord(False, 0), False, False),)
         move_request = assemble_runtime_request(prepare_runtime_wires(snapshot),
@@ -167,6 +220,17 @@ class DynamicRuntimeTests(unittest.TestCase):
         self.assertEqual(submitted.status, "battle")
         self.assertEqual(next(actor.hp for actor in submitted.scene.battle.actors
                               if actor.id == 1), initial_hp)
+        self.assertTrue(submitted.command_trace[-1].enemy_wait)
+        battle_commands = approach + (BattleMove(0, 1, 1),)
+        battle_replay = build_m11_replay(snapshot, battle_commands,
+                                         engine_build="m11-1",
+                                         command_trace=submitted.command_trace)
+        self.assertEqual(len(battle_replay.commands), len(battle_commands) + 1)
+        self.assertEqual(battle_replay.commands[-1].payload,
+                         {"kind": "battleWait", "actorId": 1})
+        self.assertEqual(verify_m11_replay(
+            battle_replay, snapshot, executable_path=str(self.binary)
+        ).response.command_trace, submitted.command_trace)
         resolved = play(approach + (BattleMove(0, 1, 1), AdvanceBattle()))
         self.assertEqual(resolved.status, "battle")
         self.assertLess(next(actor.hp for actor in resolved.scene.battle.actors
@@ -212,6 +276,9 @@ class DynamicRuntimeTests(unittest.TestCase):
             BattleMove(0, 1, 1), AdvanceBattle()))
         self.assertEqual(finished.status, "accepted")
         self.assertIsNone(finished.scene.battle)
+        self.assertIsNotNone(finished.progression)
+        self.assertEqual(len(finished.progression.owned), 1)
+        self.assertGreater(finished.progression.owned[0].individual.xp, 0)
 
 
 if __name__ == "__main__":

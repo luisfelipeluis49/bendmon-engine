@@ -8,6 +8,7 @@ import json
 from pathlib import Path
 import subprocess
 import sys
+import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "platform"))
@@ -55,16 +56,13 @@ def _signature(line: str) -> tuple[str, str, str, str, str, str, str]:
             parts[7][7:], parts[8][9:])
 
 
-def run(project: Path, output: Path, native: Path, javascript: Path,
+def run(project: Path, output: Path, javascript: Path,
         native_move: Path, javascript_move: Path,
         raster_library: Path) -> dict[str, object]:
-    """Compare exact Bend target output and materialize frames from its DTOs."""
-    native_lines = _fixture_output([str(native), "--threads", "1", "--gpu", "off"])
+    """Exercise the composed journey in JS and compare the bounded move fixture."""
     javascript_lines = _fixture_output(["node", str(javascript)])
-    if native_lines != javascript_lines:
-        raise ValueError("loaded journey differs between native and JavaScript Bend targets")
     (initial_wire, observed_wire, first_cues, second_cues, headless,
-     observed, ok) = native_lines
+     observed, ok) = javascript_lines
     if initial_wire != observed_wire or headless != observed or ok != "True":
         raise ValueError("headless and presentation-observed logical journeys diverged")
     event_and_move = _scene_output([str(native_move), "--threads", "1",
@@ -153,7 +151,9 @@ def run(project: Path, output: Path, native: Path, javascript: Path,
         "contentHash": loaded.content_hash,
         "fixtures": ["tests/m9/loaded_parity_test.bend",
                      "tests/m9/loaded_move_scene_test.bend"],
-        "nativeJavascriptExact": True,
+        "nativeJavascriptExact": None,
+        "nativeJavascriptParityFixtures": ["tests/m9/loaded_move_scene_test.bend"],
+        "loadedJourneyTarget": "javascript",
         "headlessObservedExact": True,
         "finalSignatureSha256": hashlib.sha256(headless.encode("ascii")).hexdigest(),
         "finalMeterRng": meter_rng,
@@ -182,19 +182,26 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--project", type=Path, default=ROOT / "examples/m8-world")
     parser.add_argument("--output", type=Path, default=ROOT / "build/evidence/m9-journey")
-    parser.add_argument("--native", type=Path, default=ROOT / "build/m9_loaded_parity_test")
-    parser.add_argument("--javascript", type=Path, default=ROOT / "build/m9_loaded_parity_test.js")
-    parser.add_argument("--native-move", type=Path,
-                        default=ROOT / "build/m9_loaded_move_scene_test")
-    parser.add_argument("--javascript-move", type=Path,
-                        default=ROOT / "build/m9_loaded_move_scene_test.js")
     parser.add_argument("--raster-library", type=Path,
                         default=ROOT / "build/m9-raster.so")
     args = parser.parse_args()
-    report = run(args.project, args.output, args.native, args.javascript,
-                 args.native_move, args.javascript_move,
-                 args.raster_library)
-    print("M9 loaded journey parity and presentation evidence: "
+    with tempfile.TemporaryDirectory(prefix="m9-journey-") as temporary:
+        build = Path(temporary)
+        journey_js = build / "loaded_parity_test.js"
+        move_native = build / "loaded_move_scene_test"
+        move_js = build / "loaded_move_scene_test.js"
+        subprocess.run([str(ROOT / "scripts/bend"),
+                        "tests/m9/loaded_parity_test.bend", "-o", str(journey_js)],
+                       cwd=ROOT, check=True, timeout=480)
+        subprocess.run([str(ROOT / "scripts/bend"),
+                        "tests/m9/loaded_move_scene_test.bend", "-o", str(move_native)],
+                       cwd=ROOT, check=True, timeout=480)
+        subprocess.run([str(ROOT / "scripts/bend"),
+                        "tests/m9/loaded_move_scene_test.bend", "-o", str(move_js)],
+                       cwd=ROOT, check=True, timeout=480)
+        report = run(args.project, args.output, journey_js, move_native,
+                     move_js, args.raster_library)
+    print("M9 loaded journey presentation evidence: "
           f"{report['finalSignatureSha256']}")
 
 

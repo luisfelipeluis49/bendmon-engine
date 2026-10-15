@@ -23,16 +23,19 @@ Status: complete. The acceptance contract is
 
 ## Loaded-project parity and visual evidence
 
-`scripts/run_m9_journey.py` runs the native and JavaScript Bend fixtures for
-the same validated `examples/m8-world` project and initial state. Both routes
+`scripts/run_m9_journey.py` builds and runs the composed loaded journey on
+JavaScript from a fresh temporary build for the same validated
+`examples/m8-world` project and initial state. The pinned Bend native compiler
+currently rejects this composed fixture with `an arity over 255`; the script
+does not claim native parity for that fixture. Both logical routes
 activate the NPC, resolve the event signal, move into an encounter, complete an
 M7 battle and return to the world. The headless and presentation-observed
 routes compare a full stable world signature: content identity, map/point,
 meter and RNG, persistent values/entities, terminal status, ordered battle
 transition events and captures. The move-scene fixture projects the encounter
-state without another battle traversal, which avoids Bend's measured 255-word
-continuation-arity limit. The script rejects native/JavaScript or
-headless/observed output differences and writes:
+state without another battle traversal and retains exact native/JavaScript
+parity. The script rejects movement-scene target differences and
+headless/observed journey differences, then writes:
 
 - `build/evidence/m9-journey/parity.json`: content hash, exact-comparison
   results, final signature digest, cue occurrence, frame digests and audio
@@ -89,8 +92,12 @@ judgment are not formal proof claims. The SDL process was run with desktop
 socket access for the live check; the repository gate uses dummy devices so
 it also runs headlessly.
 
-The repository gate passed all 486 checks, including the M9 native/JavaScript
-fixtures, loaded-project parity, SDL3 smoke and loaded graphical sequence.
+At the original M9 closure, the repository gate recorded 486 passing checks,
+including the then-built M9 fixtures, SDL3 smoke and the loaded graphical
+sequence. The current pinned compiler's composed loaded-journey native
+failure is recorded above; current verification builds that journey fresh on
+JavaScript and keeps native/JavaScript parity on the smaller movement and
+presentation fixtures.
 The standalone `./scripts/bend PROOF.bend` gate passed. A final real
 Wayland/ALSA run after the input and cue timing fixes rendered frames 0–4,
 played the event cue at frame 1, and exited cleanly. Independent Luna review

@@ -10,6 +10,7 @@ import ../../engine/world/geometry.bend as Geometry
 import ../../engine/world/battle_bridge.bend as BattleBridge
 import ../../engine/world/encounter_handoff.bend as Handoff
 import ../../engine/m7/playable.bend as Playable
+import ../../engine/m7/persistent_state.bend as Persistent
 import ../../engine/m7/session.bend as Session
 import ../../engine/m7/reward_bridge.bend as RewardBridge
 import ../../engine/progression/core.bend as Progression
@@ -72,9 +73,11 @@ def returned_world(state: WorldSession.WorldSession) -> Bool:
   match state:
     case WorldSession.WorldSession{
         EventBridge.State{Exploration.State{1n, point, meter, None{},
-          identity}, Events.World{Events.Value{7n, 1n} <> values,
-          entities}, None{}}, None{}}:
-      Nat.is_eq(identity, Loaded.identity())
+          +identity}, Events.World{Events.Value{7n, 1n} <> values,
+          entities}, None{}}, Some{Persistent.PersistentState{economy,
+            roster, owned, ledger, 7n, battle_identity}}}:
+      Bool.and(Nat.is_eq(identity, Loaded.identity()),
+        Nat.is_eq(battle_identity, identity))
     case _: False{}
 
 def returned(result: WorldSession.SessionResult) -> Bool:

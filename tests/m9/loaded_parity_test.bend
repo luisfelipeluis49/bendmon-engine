@@ -216,7 +216,7 @@ def final_signature(+status: Session.StepStatus,
     case WorldSession.WorldSession{EventBridge.State{
         Exploration.State{+map_id, +point,
           Encounters.Meter{+region, +weighted, +threshold, +safe, +rng},
-          pending, +identity}, +persistent, None{}}, None{}}:
+          pending, +identity}, +persistent, None{}}, Some{playable}}:
       signature = "OK|" ++ Nat.show(return_status_code(status)) ++ "|" ++
         Wire.serialize(Projection.project(Loaded.catalog(), state,
           Projection.East{})) ++ "|" ++ maybe_region_csv(region) ++ "," ++

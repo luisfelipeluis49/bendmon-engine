@@ -13,9 +13,14 @@ from typing import Protocol
 from .playtest import (FrozenPlaytestSnapshot, PlaytestError,
                        PlaytestUnavailable, prepare_runtime_wires)
 from content.m10_command_wire import M10Command, M10CommandWireError
-from .runtime_request import RuntimeRequestError, assemble_runtime_request
+from .runtime_request import (MAX_REQUEST_BYTES, RuntimeRequestError,
+                              assemble_runtime_request)
 from .runtime_response import (MAX_RESPONSE_BYTES, RuntimeResponse,
                                RuntimeResponseError, parse_runtime_response)
+from persistence.save_identity import SaveIdentity
+from persistence.world_state import WorldSnapshot, WorldStateError, encode_world_state
+from persistence.m11_progression import (M11Progression, M11ProgressionError,
+                                         encode_m11_progression_tokens)
 
 MAX_STDERR_BYTES = 4096
 DEFAULT_TIMEOUT_SECONDS = 10.0
@@ -106,10 +111,47 @@ def _checked_snapshot(snapshot: FrozenPlaytestSnapshot) -> None:
         raise PlaytestError("frozen snapshot content hash does not match its canonical bytes")
 
 
+def _restore_row(snapshot: WorldSnapshot, content_hash: str,
+                 progression: M11Progression | None = None) -> str:
+    """Encode one M11 restore row using the production stable-save codec."""
+    try:
+        encode_world_state(SaveIdentity(1, "m8-1", content_hash), snapshot)
+    except (WorldStateError, ValueError) as exc:
+        raise RuntimeProcessError(f"M11 restore snapshot is not a valid stable world: {exc}") from exc
+    compact_identity = int(content_hash[:8], 16)
+    coordinates = tuple(
+        token
+        for value in (snapshot.x, snapshot.y, snapshot.z)
+        for token in ((1 if value < 0 else 0), abs(value))
+    )
+    progression_tokens: tuple[int, ...] = ()
+    if progression is not None:
+        if type(progression) is not M11Progression:
+            raise RuntimeProcessError("M11 restore progression must be an M11Progression")
+        try:
+            progression_tokens = encode_m11_progression_tokens(progression)
+        except M11ProgressionError as exc:
+            raise RuntimeProcessError(f"M11 restore progression is invalid: {exc}") from exc
+        if progression.content_identity != compact_identity:
+            raise RuntimeProcessError("M11 restore progression content identity mismatches snapshot")
+    values = (18, 2, compact_identity, snapshot.map_id, *coordinates,
+              snapshot.region_id or 0, snapshot.weighted_distance,
+              snapshot.encounter_threshold, snapshot.safe_distance,
+              *snapshot.rng_state, len(snapshot.persistent_values),
+              *(token for pair in snapshot.persistent_values for token in pair),
+              len(snapshot.persistent_entities), *snapshot.persistent_entities,
+              int(progression is not None), len(progression_tokens), *progression_tokens)
+    if any(type(token) is not int or not 0 <= token <= 0xFFFFFFFF for token in values):
+        raise RuntimeProcessError("M11 restore row contains a non-U32 token")
+    return " ".join(map(str, values))
+
+
 def run_runtime(snapshot: FrozenPlaytestSnapshot,
                 commands: tuple[M10Command, ...], *, executable_path: str | Path,
                 timeout: float = DEFAULT_TIMEOUT_SECONDS,
-                process_runner: ProcessRunner = _run_bounded) -> RuntimeResponse:
+                process_runner: ProcessRunner = _run_bounded,
+                restore_snapshot: WorldSnapshot | None = None,
+                restore_progression: M11Progression | None = None) -> RuntimeResponse:
     """Run one frozen command log through an installed precompiled runtime.
 
     The creator path never compiles or discovers a fixture executable. The
@@ -126,9 +168,19 @@ def run_runtime(snapshot: FrozenPlaytestSnapshot,
         raise RuntimeProcessError(f"frozen M10 runtime request is invalid: {exc}") from exc
     if request.content_hash != snapshot.content_hash:
         raise RuntimeProcessError("runtime request full content hash mismatches the snapshot")
+    payload = request.payload
+    if restore_progression is not None and restore_snapshot is None:
+        raise RuntimeProcessError("M11 restore progression requires a world snapshot")
+    if restore_snapshot is not None:
+        restore_row = _restore_row(restore_snapshot, snapshot.content_hash,
+                                   restore_progression)
+        payload += restore_row.encode("ascii") + b"\n"
+        if len(payload) > MAX_REQUEST_BYTES:
+            raise RuntimeProcessError(
+                f"M11 restore request exceeds {MAX_REQUEST_BYTES} bytes")
     with tempfile.TemporaryDirectory(prefix="m10-runtime-request-") as temporary:
         request_path = Path(temporary) / "request.txt"
-        request_path.write_bytes(request.payload)
+        request_path.write_bytes(payload)
         try:
             result = process_runner([str(binary), str(request_path)], timeout=float(timeout))
         except subprocess.TimeoutExpired as exc:
@@ -153,4 +205,9 @@ def run_runtime(snapshot: FrozenPlaytestSnapshot,
             raise RuntimeProcessError(f"configured M10 runtime returned invalid output: {exc}") from exc
         if response.content_hash != snapshot.content_hash:
             raise RuntimeProcessError("runtime response full content hash mismatches the snapshot")
+        if restore_snapshot is not None:
+            if response.status == "rejected":
+                raise RuntimeProcessError("configured runtime rejected the M11 restore request")
+            if not commands and response.save_snapshot != restore_snapshot:
+                raise RuntimeProcessError("runtime M11 restore receipt does not match the requested snapshot")
         return response

@@ -18,6 +18,13 @@ type ReplayResult is Data:
   ReplayStopped{session: Session.WorldSession, accepted: Nat,
     remaining: List<&2, Commands.WorldCommand>}
 
+type TracePoint is Data:
+  TracePoint{command_index: Nat, pre_tick: Nat, post_tick: Nat,
+    ai_wait: Bool}
+
+type TracedReplay is Data:
+  TracedReplay{result: ReplayResult, trace: List<&2, TracePoint>}
+
 # M7 treats this as the per-submit interpreter budget. Each wait or escape
 # receives 4096 runtime units to validate and execute its submitted command.
 def ready_phase(phase: Battle.Phase) -> Bool:
@@ -72,11 +79,115 @@ def player_ready(actors: List<&2, Battle.Actor>) -> Bool:
       player_ready_after_match(Battle.ActorId.eq(id, Battle.ActorId{0n}),
         phase, rest)
 
+def advance_needs_enemy_from_actors(+actors: List<&2, Battle.Actor>) -> Bool:
+  Bool.and(enemy_ready(actors), Bool.not(player_ready(actors)))
+
+def advance_needs_enemy(found: Maybe<&2, Runtime.RuntimeState>) -> Bool:
+  match found:
+    case None{}: False{}
+    case Some{runtime}:
+      advance_needs_enemy_from_actors(Reducer.state_actors(
+        Runtime.runtime_battle(runtime)))
+
 def runtime_player_ready(found: Maybe<&2, Runtime.RuntimeState>) -> Bool:
   match found:
     case None{}: False{}
     case Some{runtime}: player_ready(Reducer.state_actors(
       Runtime.runtime_battle(runtime)))
+
+def battle_tick(battle: Battle.BattleState) -> Nat:
+  match battle:
+    case Battle.BattleState{now, wait_ticks, actors, events,
+        next_sequence, status}: U32.to_nat(now)
+
+def observed_tick(found: Maybe<&2, Runtime.RuntimeState>) -> Maybe<&2, Nat>:
+  match found:
+    case None{}: None{}
+    case Some{runtime}: Some{battle_tick(Runtime.runtime_battle(runtime))}
+
+def trace_tick(current: Maybe<&2, Nat>, prior: Nat) -> Nat:
+  match current:
+    case None{}: prior
+    case Some{tick}: tick
+
+def trace_reverse(rows: List<&2, TracePoint>) -> List<&2, TracePoint>:
+  match rows:
+    case Nil{}: []
+    case row <> rest: List.append(&2, TracePoint,
+      trace_reverse(rest), [row])
+
+@unsafe def trace_rows(commands: List<&2, Commands.WorldCommand>,
+  session: Session.WorldSession, index: Nat, prior_tick: Nat,
+  +rows: List<&2, TracePoint>, +species: Species.Catalog,
+  +moves: Moves.Catalog) -> List<&2, TracePoint>:
+  match commands:
+    case Nil{}: trace_reverse(rows)
+    case command <> rest:
+      trace_dispatch(command, rest, session, index, prior_tick, rows,
+        species, moves)
+
+def trace_ai_wait(command: Commands.WorldCommand,
+  session: Session.WorldSession) -> Bool:
+  match command:
+    case Commands.PlayBattleWait{actor_id}:
+      Bool.and(Nat.is_eq(actor_id, 0n), enemy_one_ready(session))
+    case Commands.PlayBattleEscape{actor_id}:
+      Bool.and(Nat.is_eq(actor_id, 0n), enemy_one_ready(session))
+    case Commands.PlayBattleMove{actor_id, target_id, move_id}:
+      Bool.and(Nat.is_eq(actor_id, 0n), enemy_one_ready(session))
+    case Commands.PlayAdvanceBattle{}:
+      advance_needs_enemy(battling_runtime(session))
+    case _: False{}
+
+@unsafe def trace_command(+command: Commands.WorldCommand,
+  result: Session.SessionResult, rest: List<&2, Commands.WorldCommand>,
+  pre_tick: Nat, ai_wait: Bool, index: Nat,
+  +rows: List<&2, TracePoint>, +species: Species.Catalog,
+  +moves: Moves.Catalog) -> List<&2, TracePoint>:
+  match result:
+    case Session.Advanced{state}:
+      trace_accepted(command, rest, state, index, pre_tick, ai_wait,
+        rows, species, moves)
+    case Session.BattleAdvanced{state, status, events}:
+      trace_accepted(command, rest, state, index, pre_tick, ai_wait,
+        rows, species, moves)
+    case Session.BattleReturned{state, status, events, captures}:
+      trace_accepted(command, rest, state, index, pre_tick, ai_wait,
+        rows, species, moves)
+    case Session.BattleChoice{state}:
+      trace_accepted(command, rest, state, index, pre_tick, ai_wait,
+        rows, species, moves)
+    case _: trace_reverse(rows)
+
+@unsafe def trace_accepted(command: Commands.WorldCommand,
+  rest: List<&2, Commands.WorldCommand>,
+  +accepted_state: Session.WorldSession, +index: Nat, +prior_tick: Nat,
+  ai_wait: Bool, +rows: List<&2, TracePoint>, +species: Species.Catalog,
+  +moves: Moves.Catalog) -> List<&2, TracePoint>:
+  +tick = trace_tick(observed_tick(battling_runtime(accepted_state)),
+    prior_tick)
+  trace_rows(rest, Session.resume_world(accepted_state), Nat.add(index, 1n),
+    tick, TracePoint{Nat.sub(index, 1n), prior_tick, tick,
+      ai_wait} <> rows, species, moves)
+
+@unsafe def trace_dispatch(+command: Commands.WorldCommand,
+  rest: List<&2, Commands.WorldCommand>, +session: Session.WorldSession,
+  index: Nat, prior_tick: Nat, +rows: List<&2, TracePoint>,
+  +species: Species.Catalog, +moves: Moves.Catalog) -> List<&2, TracePoint>:
+  +pre_tick = trace_tick(observed_tick(battling_runtime(session)), prior_tick)
+  +ai_wait = trace_ai_wait(command, session)
+  trace_command(command, command_result(command, session, species, moves),
+  rest, pre_tick, ai_wait, index, rows, species, moves)
+
+def trace_checked(allowed: Bool,
+  commands: List<&2, Commands.WorldCommand>, +session: Session.WorldSession,
+  +species: Species.Catalog, +moves: Moves.Catalog) -> List<&2, TracePoint>:
+  match allowed:
+    case False{}: []
+    case True{}:
+      trace_rows(commands, session, 1n,
+        trace_tick(observed_tick(battling_runtime(session)), 0n), [],
+        species, moves)
 
 def player_one_ready(session: Session.WorldSession) -> Bool:
   runtime_player_ready(battling_runtime(session))
@@ -241,3 +352,10 @@ def run(+commands: List<&2, Commands.WorldCommand>,
   moves: Moves.Catalog) -> ReplayResult:
   run_checked(Nat.is_le(List.length(&2, Commands.WorldCommand, commands),
     4096n), commands, session, species, moves)
+
+def run_traced(+commands: List<&2, Commands.WorldCommand>,
+  +session: Session.WorldSession, +species: Species.Catalog,
+  +moves: Moves.Catalog) -> TracedReplay:
+  TracedReplay{run(commands, session, species, moves),
+    trace_checked(Nat.is_le(List.length(&2, Commands.WorldCommand,
+      commands), 4096n), commands, session, species, moves)}

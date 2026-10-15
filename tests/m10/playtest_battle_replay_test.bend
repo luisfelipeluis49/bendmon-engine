@@ -70,10 +70,16 @@ def advance_was_accepted(replay: Replay.ReplayResult) -> Bool:
     case Replay.Replayed{Session.Battling{persistent, battle}, 1n}: True{}
     case _: False{}
 
+def advance_trace_no_ai_wait(result: Replay.TracedReplay) -> Bool:
+  match result:
+    case Replay.TracedReplay{Replay.Replayed{session, 1n},
+        [Replay.TracePoint{0n, pre_tick, post_tick, False{}}]}: True{}
+    case _: False{}
+
 def accepted_advance(result: Maybe<Session.WorldSession>) -> Bool:
   match result:
     case Some{Session.Battling{persistent, battle}}:
-      advance_was_accepted(Replay.run([Commands.PlayAdvanceBattle{}],
+      advance_trace_no_ai_wait(Replay.run_traced([Commands.PlayAdvanceBattle{}],
         Session.Battling{persistent, battle}, replay_species(), replay_moves()))
     case _: False{}
 
@@ -109,12 +115,18 @@ def accepted_escape(result: Maybe<Session.WorldSession>) -> Bool:
         Session.Battling{persistent, battle}, replay_species(), replay_moves()), 1n)
     case _: False{}
 
+def authored_move_trace(result: Replay.TracedReplay) -> Bool:
+  match result:
+    case Replay.TracedReplay{Replay.Replayed{session, 1n},
+        [Replay.TracePoint{0n, pre_tick, post_tick, True{}}]}: True{}
+    case _: False{}
+
 def accepted_authored_move(result: Maybe<Session.WorldSession>) -> Bool:
   match result:
     case Some{Session.Battling{persistent, battle}}:
-      battle_command_count(Replay.run([Commands.PlayBattleMove{0n, 1n, 1n}],
-        Session.Battling{persistent, battle}, replay_species(), replay_moves()),
-        1n)
+      authored_move_trace(Replay.run_traced(
+        [Commands.PlayBattleMove{0n, 1n, 1n}],
+        Session.Battling{persistent, battle}, replay_species(), replay_moves()))
     case _: False{}
 
 def nonzero_was_rejected(result: Replay.ReplayResult) -> Bool:

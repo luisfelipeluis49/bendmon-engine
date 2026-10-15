@@ -1,5 +1,6 @@
 import Base
 import ../battle/model.bend as Battle
+import ../battle/rng.bend as Rng
 import ../battle/runtime.bend as Runtime
 import ../battle/combat_math.bend as Math
 import ../battle/sources.bend as Sources
@@ -15,6 +16,7 @@ import ./session.bend as Session
 import ./battle.bend as M7
 import ./reward_bridge.bend as Bridge
 import ./rewards.bend as Rewards
+import ./persistent_state.bend as Persistent
 
 # M10 bootstrap uses a fixed versioned ruleset. Legal initial move IDs receive
 # runtime source slots; dynamic descriptors remain inert content data.
@@ -128,13 +130,10 @@ def initial_capture_catalog(wild: M7.SpeciesCaptureProfile,
   capacity: Economy.Capacity) -> M7.CaptureCatalog:
   M7.CaptureCatalog{[wild], [], [], [Economy.CapacityTier{capacity}]}
 
-def initial_runtime(pair: Boot.BootPair, wait_ticks: U32,
+def initial_runtime_rng(rng: Rng.RngState, wait_ticks: U32,
   +starter: Progression.Individual, +wild: Progression.Individual,
   +starter_base: Progression.StatBlock,
   +wild_base: Progression.StatBlock) -> Runtime.RuntimeState:
-  match pair:
-    case Boot.BootPair{starter_value, wild_value, encounter_id, identity,
-        rng, wait}:
       Runtime.RuntimeState{
         Battle.BattleState{0, wait_ticks,
           [Battle.Actor{Battle.ActorId{0n}, Battle.Player{},
@@ -148,6 +147,16 @@ def initial_runtime(pair: Boot.BootPair, wait_ticks: U32,
         Some{Runtime.RuntimeEffectState{Battle.ActorId{0n},
           Battle.ActorId{1n}, initial_world(starter, wild,
             starter_base, wild_base)}}}
+
+def initial_runtime(pair: Boot.BootPair, wait_ticks: U32,
+  +starter: Progression.Individual, +wild: Progression.Individual,
+  +starter_base: Progression.StatBlock,
+  +wild_base: Progression.StatBlock) -> Runtime.RuntimeState:
+  match pair:
+    case Boot.BootPair{starter_value, wild_value, encounter_id, identity,
+        rng, wait}:
+      initial_runtime_rng(rng, wait_ticks, starter, wild,
+        starter_base, wild_base)
 
 def initial_m7(runtime: Runtime.RuntimeState, economy: Economy.State,
   roster: Roster.Roster, catalog: M7.CaptureCatalog) -> M7.State:
@@ -202,6 +211,53 @@ def initial_enemy(+wild: Progression.Individual,
 
 def initial_owner_actor() -> Session.OwnerActor:
   Session.OwnerActor{Battle.ActorId{0n}, 1n, True{}}
+
+def owner_actor_for_id(id: Nat) -> Session.OwnerActor:
+  Session.OwnerActor{Battle.ActorId{0n}, id, True{}}
+
+def reward_input_id(input: Rewards.OwnedRewardInput) -> Nat:
+  match input:
+    case Rewards.OwnedRewardInput{individual, base, ivs, alive, active}:
+      Rewards.individual_id(individual)
+
+def owned_input_for(+id: Nat,
+  rows: List<&2, Rewards.OwnedRewardInput>) ->
+  Maybe<Rewards.OwnedRewardInput>:
+  match rows:
+    case Nil{}: None{}
+    case +row <> rest:
+      Bool.pick(Maybe<Rewards.OwnedRewardInput>,
+        Nat.is_eq(reward_input_id(row), id), Some{row},
+        owned_input_for(id, rest))
+
+def first_party_id(roster: Roster.Roster) -> Maybe<Nat>:
+  match roster:
+    case Roster.Roster{capacity, party, storage}:
+      match party:
+        case Nil{}: None{}
+        case Roster.IndividualId{value} <> rest: Some{value}
+
+def first_party_input_result(id: Maybe<Nat>,
+  rows: List<&2, Rewards.OwnedRewardInput>) ->
+  Maybe<Rewards.OwnedRewardInput>:
+  match id:
+    case None{}: None{}
+    case Some{id}: owned_input_for(id, rows)
+
+def first_party_input(roster: Roster.Roster,
+  rows: List<&2, Rewards.OwnedRewardInput>) ->
+  Maybe<Rewards.OwnedRewardInput>:
+  first_party_input_result(first_party_id(roster), rows)
+
+def economy_capacity(value: Economy.State) -> Economy.Capacity:
+  match value:
+    case Economy.State{capacity, tier, party, storage, equipped, currency,
+        inventory}: capacity
+
+def individual_species(value: Progression.Individual) -> Nat:
+  match value:
+    case Progression.Individual{id, species, level, xp, hp, max_hp,
+        ivs, moves, history, observations, unlocks, harmony}: species
 
 def move_catalog_valid(pair: Boot.BootPair, species: Species.Catalog,
   moves: Moves.Catalog) -> Bool:
@@ -263,6 +319,121 @@ def checked_session(valid: Bool, pair: Boot.BootPair,
       Playable.open(state,
         Playable.ContentCatalog{learning, [], ruleset_version(), identity},
         ruleset_version(), identity)
+
+def continuation_ready(pair: Boot.BootPair,
+  +starter: Progression.Individual, +starter_base: Progression.StatBlock,
+  wild_record: Species.SpeciesProgressionRecord,
+  learning: List<&2, Rewards.SpeciesLearning>, +economy: Economy.State,
+  +roster: Roster.Roster, +owned: List<&2, Rewards.OwnedRewardInput>,
+  +ledger: Progression.RewardLedger, +identity: Nat) ->
+  Maybe<Playable.PlayableSession>:
+  match pair wild_record:
+        case Boot.BootPair{starter_seed, +wild, encounter_id,
+            pair_identity, rng, wait_ticks}
+             Species.SpeciesProgressionRecord{wild_species, +wild_base,
+               wild_capture, +wild_xp, +wild_currency, wild_types,
+               wild_learning}
+             :
+          +starter_stats = actual_stats(starter_base, starter)
+          +wild_stats = actual_stats(wild_base, wild)
+          runtime = initial_runtime_rng(rng, wait_ticks, starter, wild,
+            starter_stats, wild_stats)
+          capture_catalog = initial_capture_catalog(
+            capture_profile(wild_record, wild), economy_capacity(economy))
+          battle = initial_m7(runtime, economy, roster, capture_catalog)
+          reward_context: Bridge.Context = Bridge.Context{encounter_id, [], owned, [],
+            economy, ledger}
+          enemy = initial_enemy(wild, wild_base, wild_xp, wild_currency)
+          owner_actor = owner_actor_for_id(
+            Rewards.individual_id(starter))
+          state: Session.State = Session.State{battle, reward_context, [enemy],
+            [owner_actor]}
+          Playable.open(state,
+            Playable.ContentCatalog{learning, [], ruleset_version(),
+              identity}, ruleset_version(), identity)
+
+
+def continue_session(valid: Bool, pair: Boot.BootPair,
+  owner: Maybe<Rewards.OwnedRewardInput>,
+  wild_row: Maybe<Species.SpeciesProgressionRecord>,
+  learning: List<&2, Rewards.SpeciesLearning>,
+  +economy: Economy.State, +roster: Roster.Roster,
+  +owned: List<&2, Rewards.OwnedRewardInput>,
+  +ledger: Progression.RewardLedger, identity: Nat) ->
+  Maybe<Playable.PlayableSession>:
+  match valid owner wild_row:
+    case False{} _ _: None{}
+    case True{} None{} _: None{}
+    case True{} _ None{}: None{}
+    case True{} Some{Rewards.OwnedRewardInput{+starter, +starter_base,
+        starter_ivs, alive, active}} Some{wild_record}:
+      continuation_ready(pair, starter, starter_base, wild_record, learning,
+        economy, roster, owned, ledger, identity)
+
+# Starts another encounter from a validated persistent snapshot. The first
+# party roster entry is the active owner; all saved owner inputs and the reward
+# ledger continue into the new session.
+def build_continuation(+pair: Boot.BootPair,
+  +persistent: Persistent.PersistentState, +species: Species.Catalog,
+  moves: Moves.Catalog) -> Maybe<Playable.PlayableSession>:
+  match pair persistent species moves:
+    case Boot.BootPair{starter_seed, wild, encounter_id, +pair_identity,
+        rng, wait_ticks}
+         Persistent.PersistentState{+economy, +roster, +owned, +ledger,
+           +ruleset, +saved_identity}
+         Species.Catalog{+species_identity, species_move_count, rows}
+         Moves.Catalog{+move_identity, move_rows}:
+      +identity = U32.to_nat(pair_identity)
+      learning = learning_rows(rows)
+      selected = first_party_input(roster, owned)
+      wild_species = individual_species(wild)
+      valid = Bool.and(Persistent.state_valid(persistent),
+        Nat.is_eq(ruleset, ruleset_version()))
+      valid = Bool.and(valid, Nat.is_eq(saved_identity, identity))
+      valid = Bool.and(valid,
+        U32.is_eq(species_identity, pair_identity))
+      valid = Bool.and(valid,
+        U32.is_eq(move_identity, pair_identity))
+      valid = Bool.and(valid, U32.is_eq(species_move_count,
+        U32.from_nat(List.length(&2, Moves.MoveRecord, move_rows))))
+      continue_session(valid,
+        pair, selected, species_record(wild_species, rows), learning,
+        economy, roster, owned, ledger, identity)
+
+def continuation_pair_ready(starter_row: Maybe<Species.SpeciesProgressionRecord>,
+  wild_row: Maybe<Species.SpeciesProgressionRecord>, starter_level: U32,
+  wild_level: Nat, encounter_id: Nat, identity: U32, rng: Rng.RngState,
+  wait_ticks: U32) -> Boot.BootResult:
+  match starter_row wild_row:
+    case Some{starter} Some{wild}:
+      Boot.build(starter, starter_level, wild, U32.from_nat(wild_level),
+        encounter_id, identity, rng, wait_ticks)
+    case _ _: Boot.BootRejected{}
+
+def continuation_pair_from_owner(owner: Maybe<Rewards.OwnedRewardInput>,
+  +rows: List<&2, Species.SpeciesProgressionRecord>, wild_id: Nat,
+  wild_level: Nat, encounter_id: Nat, identity: U32, rng: Rng.RngState,
+  wait_ticks: U32) -> Boot.BootResult:
+  match owner:
+    case None{}: Boot.BootRejected{}
+    case Some{Rewards.OwnedRewardInput{+individual, base, ivs, alive,
+        active}}:
+      continuation_pair_ready(species_record(individual_species(individual),
+        rows), species_record(wild_id, rows), individual_level(individual),
+        wild_level, encounter_id, identity, rng, wait_ticks)
+
+# Builds the boot pair used by the host start boundary from the saved active
+# party member and the encounter selected by WorldSession.
+def build_continuation_pair(+persistent: Persistent.PersistentState,
+  species: Species.Catalog, wild_id: Nat, wild_level: Nat,
+  encounter_id: Nat, identity: U32, rng: Rng.RngState,
+  wait_ticks: U32) -> Boot.BootResult:
+  match persistent species:
+    case Persistent.PersistentState{economy, roster, owned, ledger,
+        ruleset, saved_identity}
+         Species.Catalog{species_identity, move_count, rows}:
+      continuation_pair_from_owner(first_party_input(roster, owned), rows,
+        wild_id, wild_level, encounter_id, identity, rng, wait_ticks)
 
 # Creates a fresh, session_valid M7 world from matching validated catalogs.
 # Move descriptors are retained as inert content; this starter session supports

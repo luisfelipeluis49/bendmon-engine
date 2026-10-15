@@ -26,8 +26,19 @@ from .playtest import (FrozenPlaytestSnapshot, PlaytestError,
 from .command_input import CommandInputError, parse_command
 from .presentation_content import presentation_content
 from .runtime_process import RuntimeProcessError, run_runtime
-from content.m10_command_wire import M10Command, M10CommandWireError, encode_m10_commands
+from content.m10_command_wire import (FastTravel, M10Command, M10CommandWireError,
+                                      Traverse, encode_m10_commands)
 from .runtime_response import RuntimeResponse
+from .m11_session_codec import (M11SessionCodecError, build_m11_replay,
+                                command_from_value, command_to_value,
+                                verify_m11_replay)
+from persistence.m11_replay import (MAX_COMMANDS as MAX_REPLAY_COMMANDS,
+                                    ReplayFileError, decode_replay, encode_replay)
+from persistence.m11_save import (M11_SAVE_SCHEMA_VERSION, M11Save,
+                                  M11SaveError, SaveExpectation)
+from persistence.save_slots import SaveSlotError, SaveSlotStore
+from persistence.world_state import WorldSnapshot
+from persistence.m11_progression import M11Progression
 
 _PROJECT_ID = re.compile(r"[a-f0-9]{32}\Z")
 _SESSION_ID = re.compile(r"[a-f0-9]{32}\Z")
@@ -42,18 +53,24 @@ MAX_ASSET_BYTES = min(MAX_TOTAL_BYTES, 8 * 1024 * 1024)
 MAX_PLAYTEST_SESSIONS = 32
 MAX_PLAYTEST_COMMANDS = 4096
 PLAYTEST_SESSION_TTL_SECONDS = 3600.0
+M11_ENGINE_BUILD = "m11-1"
 
 
 class _PlaytestSession:
     def __init__(self, snapshot: FrozenPlaytestSnapshot,
                  commands: tuple[M10Command, ...],
                  response: RuntimeResponse, presentation: dict[str, Any],
-                 last_access: float) -> None:
+                 last_access: float,
+                 restore_snapshot: WorldSnapshot | None = None,
+                 restore_progression: M11Progression | None = None) -> None:
         self.snapshot = snapshot
         self.commands = commands
         self.response = response
         self.presentation = presentation
         self.last_access = last_access
+        self.autosave_warning: str | None = None
+        self.restore_snapshot = restore_snapshot
+        self.restore_progression = restore_progression
 
 
 class MakerError(Exception):
@@ -318,6 +335,11 @@ class MakerService:
             session_id = uuid.uuid4().hex
             record = _PlaytestSession(snapshot, (), response, presentation,
                                       self._clock())
+            if response.save_snapshot is not None:
+                try:
+                    self._save_record(record, "autosave")
+                except MakerError as exc:
+                    record.autosave_warning = exc.message
             with self._session_lock:
                 self._prune_sessions_locked()
                 if session_id in self._sessions:
@@ -362,20 +384,207 @@ class MakerService:
                 raise MakerError("playtest-command-limit", "playtest command log reached 4096 commands")
             candidate = record.commands + (typed_command,)
             try:
+                options = ({"restore_snapshot": record.restore_snapshot,
+                            "restore_progression": record.restore_progression}
+                           if record.restore_snapshot is not None else {})
                 response = run_runtime(record.snapshot, candidate,
-                                       executable_path=self.runtime_path)
+                                       executable_path=self.runtime_path, **options)
             except (RuntimeProcessError, PlaytestUnavailable) as exc:
                 raise MakerError("playtest-runtime", str(exc)) from None
             except PlaytestError as exc:
                 raise MakerError("playtest-invalid", str(exc)) from None
             if (response.status in {"accepted", "encounter", "battle"} and
                     response.accepted_commands == len(candidate)):
+                replay_rows = len(candidate) + sum(
+                    step.enemy_wait for step in response.command_trace)
+                if replay_rows > MAX_REPLAY_COMMANDS:
+                    raise MakerError("playtest-command-limit",
+                                     "run reached the 4096-command replay limit")
                 record.commands = candidate
                 record.response = response
                 record.last_access = self._clock()
+                if response.save_snapshot is not None and type(typed_command) in (Traverse, FastTravel):
+                    try:
+                        self._save_record(record, "autosave")
+                        record.autosave_warning = None
+                    except MakerError as exc:
+                        record.autosave_warning = exc.message
                 return self._session_payload(session_id, record)
             record.last_access = self._clock()
             return self._session_payload(session_id, record, rejected=True)
+
+    @staticmethod
+    def _save_identity(snapshot: FrozenPlaytestSnapshot) -> SaveExpectation:
+        try:
+            loaded = load_project(snapshot.project_root)
+        except (ContentError, InfrastructureError, OSError) as exc:
+            raise MakerError("save-identity", f"frozen project could not be verified: {exc}") from None
+        if loaded.content_hash != snapshot.content_hash or not loaded.catalogs:
+            raise MakerError("save-identity", "frozen project content or catalog changed")
+        return SaveExpectation("m8-1", snapshot.content_hash,
+                               str(loaded.project.id),
+                               str(sorted(loaded.catalogs, key=lambda row: str(row.id))[0].id))
+
+    def _slot_store(self, project_id: str) -> SaveSlotStore:
+        self.project_path(project_id)
+        return SaveSlotStore(self.root / ".saves" / project_id)
+
+    def _save_record(self, record: _PlaytestSession, slot: str) -> None:
+        world = record.response.save_snapshot
+        if world is None:
+            raise MakerError("save-boundary", "run is not at a stable world save boundary")
+        identity = self._save_identity(record.snapshot)
+        save = M11Save(M11_ENGINE_BUILD, identity.project_id,
+                       identity.catalog_id, identity.ruleset_version,
+                       identity.content_digest, record.snapshot.wait_ticks,
+                       world, record.snapshot.rng_state,
+                       tuple(command_to_value(command) for command in record.commands),
+                       schema_version=M11_SAVE_SCHEMA_VERSION,
+                       restore_snapshot=record.restore_snapshot,
+                       progression=record.response.progression,
+                       restore_progression=record.restore_progression)
+        try:
+            project_id = record.snapshot.project_root.name.split("-")[0]
+            self._slot_store(project_id).save(slot, save)
+        except (M11SaveError, SaveSlotError, OSError, M11SessionCodecError) as exc:
+            raise MakerError("save-failed", str(exc)) from None
+
+    def save_playtest(self, session_id: str, slot: str) -> dict[str, Any]:
+        """Atomically persist one stable, Bend-projected run in a fixed slot."""
+        if type(session_id) is not str or not _SESSION_ID.fullmatch(session_id):
+            raise MakerError("playtest-session", "playtest session ID is invalid")
+        with self._session_lock:
+            self._prune_sessions_locked()
+            record = self._sessions.get(session_id)
+            if record is None:
+                raise MakerError("playtest-session", "playtest session was not found or expired")
+            self._save_record(record, slot)
+            record.last_access = self._clock()
+            return {"ok": True, "slot": slot, "contentHash": record.snapshot.content_hash,
+                    "acceptedCommands": len(record.commands)}
+
+    def load_playtest(self, project_id: str, slot: str,
+                      expected_content_hash: str) -> dict[str, Any]:
+        """Install a saved run only after full authoritative command replay."""
+        self._reserve_session_slot()
+        reserved = True
+        try:
+            validation = self.validate_project(project_id)
+            if not validation["valid"] or validation["contentHash"] != expected_content_hash:
+                raise MakerError("content-mismatch", "save requires the exact validated project content")
+            exported = self.export_project(project_id)
+            if not exported["valid"] or exported["contentHash"] != expected_content_hash:
+                raise MakerError("content-mismatch", "project changed during save load")
+            export_root = Path(exported["exportPath"])
+            loaded = load_project(export_root)
+            if not loaded.catalogs:
+                raise MakerError("save-identity", "project has no content catalog")
+            identity = SaveExpectation("m8-1", expected_content_hash,
+                                       str(loaded.project.id),
+                                       str(sorted(loaded.catalogs, key=lambda row: str(row.id))[0].id))
+            save, recovered = self._slot_store(project_id).load(slot, identity)
+            if (save.schema_version < M11_SAVE_SCHEMA_VERSION and
+                    save.restore_snapshot is not None and save.progression is not None):
+                raise MakerError(
+                    "save-replay",
+                    "legacy anchored save does not identify its restore progression")
+            snapshot = freeze_project(export_root, rng_state=save.initial_rng_state,
+                                      wait_ticks=save.wait_ticks)
+            commands = tuple(command_from_value(value) for value in save.accepted_commands)
+            options = ({"restore_snapshot": save.restore_snapshot,
+                        "restore_progression": save.restore_progression}
+                       if save.restore_snapshot is not None else {})
+            response = run_runtime(snapshot, commands, executable_path=self.runtime_path,
+                                   **options)
+            if (response.status != "accepted" or response.accepted_commands != len(commands)
+                    or response.save_snapshot != save.snapshot
+                    or response.progression != save.progression):
+                raise MakerError("save-replay", "authoritative replay does not match saved world state")
+            session_id = uuid.uuid4().hex
+            record = _PlaytestSession(snapshot, commands, response,
+                                      presentation_content(snapshot), self._clock(),
+                                      save.restore_snapshot, save.restore_progression)
+            with self._session_lock:
+                self._prune_sessions_locked()
+                self._sessions[session_id] = record
+                self._session_reservations -= 1
+                reserved = False
+            result = self._session_payload(session_id, record)
+            result.update({"loadedSlot": slot, "recovered": recovered})
+            return result
+        except (M11SaveError, SaveSlotError, M11SessionCodecError,
+                RuntimeProcessError, PlaytestError, OSError) as exc:
+            raise MakerError("save-load", str(exc)) from None
+        finally:
+            if reserved:
+                with self._session_lock:
+                    self._session_reservations -= 1
+
+    def export_replay(self, session_id: str) -> dict[str, Any]:
+        """Return canonical replay bytes for an accepted maker run."""
+        with self._session_lock:
+            self._prune_sessions_locked()
+            record = self._sessions.get(session_id)
+            if record is None:
+                raise MakerError("playtest-session", "playtest session was not found or expired")
+            try:
+                replay = build_m11_replay(record.snapshot, record.commands,
+                                          engine_build=M11_ENGINE_BUILD,
+                                          restore_snapshot=record.restore_snapshot,
+                                          restore_progression=record.restore_progression,
+                                          command_trace=record.response.command_trace)
+            except M11SessionCodecError as exc:
+                raise MakerError("replay-unavailable", str(exc)) from None
+            return {"ok": True, "contentHash": record.snapshot.content_hash,
+                    "replayBase64": base64.b64encode(encode_replay(replay)).decode("ascii")}
+
+    def migrate_save(self, project_id: str, slot: str,
+                     expected_content_hash: str, wait_ticks: int) -> dict[str, Any]:
+        """Explicitly migrate an exact-identity M8-v1 slot, then resume it."""
+        validation = self.validate_project(project_id)
+        if not validation["valid"] or validation["contentHash"] != expected_content_hash:
+            raise MakerError("content-mismatch", "migration requires exact validated project content")
+        exported = self.export_project(project_id)
+        if not exported["valid"] or exported["contentHash"] != expected_content_hash:
+            raise MakerError("content-mismatch", "project changed during migration")
+        snapshot = freeze_project(exported["exportPath"], rng_state=(1, 0, 0, 0),
+                                  wait_ticks=wait_ticks)
+        try:
+            self._slot_store(project_id).migrate_slot(
+                slot, self._save_identity(snapshot), engine_build=M11_ENGINE_BUILD,
+                wait_ticks=wait_ticks)
+        except (M11SaveError, SaveSlotError, OSError) as exc:
+            raise MakerError("save-migration", str(exc)) from None
+        resumed = self.load_playtest(project_id, slot, expected_content_hash)
+        resumed["migrated"] = True
+        return resumed
+
+    def verify_project_replay(self, project_id: str, expected_content_hash: str,
+                              replay_base64: str) -> dict[str, Any]:
+        """Verify a supplied replay against current validated content and Bend."""
+        if type(replay_base64) is not str or len(replay_base64) > 3_000_000:
+            raise MakerError("replay-size", "replay data is missing or oversized")
+        validation = self.validate_project(project_id)
+        if not validation["valid"] or validation["contentHash"] != expected_content_hash:
+            raise MakerError("content-mismatch", "replay requires the exact validated project content")
+        exported = self.export_project(project_id)
+        if not exported["valid"] or exported["contentHash"] != expected_content_hash:
+            raise MakerError("content-mismatch", "project changed during replay verification")
+        try:
+            raw = base64.b64decode(replay_base64, validate=True)
+            replay = decode_replay(raw, expected_ruleset="m8-1",
+                                   expected_content_digest=expected_content_hash)
+            snapshot = freeze_project(exported["exportPath"],
+                                      rng_state=replay.header.rng_state,
+                                      wait_ticks=replay.header.wait_ticks)
+            result = verify_m11_replay(replay, snapshot,
+                                       executable_path=str(self.runtime_path))
+        except (binascii.Error, ReplayFileError, M11SessionCodecError,
+                RuntimeProcessError, PlaytestError, ValueError) as exc:
+            raise MakerError("replay-invalid", str(exc)) from None
+        return {"ok": True, "valid": True, "replayDigest": result.replay_digest,
+                "status": result.response.status,
+                "acceptedCommands": result.response.accepted_commands}
 
     def _reserve_session_slot(self) -> None:
         with self._session_lock:
@@ -417,8 +626,10 @@ class MakerService:
                     "acceptedCommands": len(record.commands),
                     "sceneCsv": response.scene_csv,
                     "cuesCsv": "1,0", "encounterId": None,
-                    "dialogue": MakerService._dialogue_payload(record),
-                    "presentation": record.presentation, "rejected": True}
+                "dialogue": MakerService._dialogue_payload(record),
+                "presentation": record.presentation, "rejected": True,
+                "saveAvailable": response.save_snapshot is not None,
+                "autosaveWarning": record.autosave_warning}
         return {"ok": True, "sessionId": session_id,
                 "contentHash": record.snapshot.content_hash,
                 "status": response.status,
@@ -427,7 +638,9 @@ class MakerService:
                 "cuesCsv": response.cues_csv,
                 "encounterId": response.encounter_id,
                 "dialogue": MakerService._dialogue_payload(record),
-                "presentation": record.presentation}
+                "presentation": record.presentation,
+                "saveAvailable": response.save_snapshot is not None,
+                "autosaveWarning": record.autosave_warning}
 
     def _project_payload(self, project_id: str) -> dict[str, Any]:
         root = self.project_path(project_id)

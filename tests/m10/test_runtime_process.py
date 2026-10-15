@@ -18,6 +18,8 @@ from maker.playtest import PlaytestUnavailable, freeze_project
 from maker.runtime_process import RuntimeProcessError, run_runtime
 from maker.runtime_request import RuntimeWires
 from maker.runtime_response import MAX_RESPONSE_BYTES
+from persistence.world_state import WorldSnapshot
+from persistence.m11_progression import decode_m11_progression, encode_m11_progression_tokens
 
 
 class FakeProcessRunner:
@@ -68,6 +70,24 @@ class RuntimeProcessTests(unittest.TestCase):
                            executable_path=self.binary,
                            process_runner=runner)
 
+    def save_row(self, identity: int, world: WorldSnapshot) -> str:
+        coordinates = tuple(token for value in (world.x, world.y, world.z)
+                            for token in ((1 if value < 0 else 0), abs(value)))
+        values = (identity, world.map_id, *coordinates, world.region_id or 0,
+                  world.weighted_distance, world.encounter_threshold,
+                  world.safe_distance, *world.rng_state,
+                  len(world.persistent_values),
+                  *(token for pair in world.persistent_values for token in pair),
+                  len(world.persistent_entities), *world.persistent_entities)
+        return "SAVE 1," + ",".join(map(str, values))
+
+    def accepted_response(self, identity: int, commands: int,
+                          world: WorldSnapshot | None = None) -> bytes:
+        output = self.response(identity, commands).decode("ascii")
+        if world is not None:
+            output += self.save_row(identity, world) + "\n"
+        return output.encode("ascii")
+
     def test_runs_explicit_binary_and_parses_typed_response(self) -> None:
         identity = int(self.snapshot.content_hash[:8], 16)
         runner = FakeProcessRunner(self.response(identity))
@@ -110,6 +130,79 @@ class RuntimeProcessTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeProcessError, "timeout"):
             run_runtime(self.snapshot, (), executable_path=self.binary,
                         timeout=61, process_runner=FakeProcessRunner(b""))
+
+    def test_restore_row_is_appended_after_commands_and_receipted(self) -> None:
+        identity = int(self.snapshot.content_hash[:8], 16)
+        restored = WorldSnapshot(1, -12, 0, 23, None, 0, 0, 0,
+                                 (9, 8, 7, 6), ((7, 8),), (4,))
+        advanced = WorldSnapshot(1, -11, 0, 23, None, 0, 0, 0,
+                                 (9, 8, 7, 6), ((7, 9),), (4,))
+        runner = FakeProcessRunner(self.accepted_response(identity, 1, advanced))
+        result = run_runtime(self.snapshot, (Activate(3),),
+                             executable_path=self.binary, process_runner=runner,
+                             restore_snapshot=restored)
+        self.assertEqual(result.save_snapshot, advanced)
+        rows = runner.request.decode("ascii").splitlines()
+        self.assertEqual(len(rows), 9)
+        self.assertTrue(rows[7].startswith("14 "))
+        self.assertEqual(rows[8],
+            f"18 2 {identity} 1 1 12 0 0 0 23 0 0 0 0 9 8 7 6 1 7 8 1 4 0 0")
+
+    def test_restore_row_carries_schema_three_progression_tokens(self) -> None:
+        identity = int(self.snapshot.content_hash[:8], 16)
+        progression = decode_m11_progression({
+            "economy": {"capacity": {"party": 6, "moves": 4, "storage": 1000,
+                "stack": 999, "entries": 512, "currency": 9_999_999},
+                "tier": 0, "party": 0, "storage": 0, "equippedMoves": 0,
+                "currency": 0, "inventory": []},
+            "roster": {"capacity": {"party": 6, "moves": 4, "storage": 1000,
+                "stack": 999, "entries": 512, "currency": 9_999_999},
+                "party": [], "storage": []},
+            "owned": [], "ledger": {"completedEncounters": []},
+            "ruleset": 7, "contentIdentity": identity,
+        })
+        restored = WorldSnapshot(1, 0, 0, 0, None, 0, 0, 0,
+                                 (1, 2, 3, 4), ())
+        runner = FakeProcessRunner(self.accepted_response(identity, 0, restored))
+        run_runtime(self.snapshot, (), executable_path=self.binary,
+                    process_runner=runner, restore_snapshot=restored,
+                    restore_progression=progression)
+        row = runner.request.decode("ascii").splitlines()[8].split()
+        self.assertEqual(row[:3], ["18", "2", str(identity)])
+        tokens = encode_m11_progression_tokens(progression)
+        self.assertEqual(row[-len(tokens) - 2:-len(tokens)], ["1", str(len(tokens))])
+        self.assertEqual(tuple(map(int, row[-len(tokens):])), tokens)
+
+    def test_empty_command_restore_requires_exact_receipt(self) -> None:
+        identity = int(self.snapshot.content_hash[:8], 16)
+        restored = WorldSnapshot(1, 0, 0, 0, None, 0, 0, 0,
+                                 (1, 2, 3, 4), ())
+        runner = FakeProcessRunner(self.accepted_response(identity, 0, restored))
+        result = run_runtime(self.snapshot, (), executable_path=self.binary,
+                             process_runner=runner, restore_snapshot=restored)
+        self.assertEqual(result.save_snapshot, restored)
+        wrong = WorldSnapshot(1, 1, 0, 0, None, 0, 0, 0,
+                              (1, 2, 3, 4), ())
+        mismatch = FakeProcessRunner(self.accepted_response(identity, 0, wrong))
+        with self.assertRaisesRegex(RuntimeProcessError, "receipt does not match"):
+            run_runtime(self.snapshot, (), executable_path=self.binary,
+                        process_runner=mismatch, restore_snapshot=restored)
+
+    def test_restore_rejects_old_runtime_and_unstable_snapshot(self) -> None:
+        identity = int(self.snapshot.content_hash[:8], 16)
+        restored = WorldSnapshot(1, 0, 0, 0, None, 0, 0, 0,
+                                 (1, 2, 3, 4), ())
+        old_runtime = FakeProcessRunner(b"M10PLAY2 REJECTED\n")
+        with self.assertRaisesRegex(RuntimeProcessError, "rejected the M11 restore"):
+            run_runtime(self.snapshot, (Activate(3),), executable_path=self.binary,
+                        process_runner=old_runtime, restore_snapshot=restored)
+        unstable = WorldSnapshot(1, 0, 0, 0, None, 0, 0, 0,
+                                 (1, 2, 3, 4), (), event_active=True)
+        runner = FakeProcessRunner(self.accepted_response(identity, 0))
+        with self.assertRaisesRegex(RuntimeProcessError, "not a valid stable world"):
+            run_runtime(self.snapshot, (), executable_path=self.binary,
+                        process_runner=runner, restore_snapshot=unstable)
+        self.assertIsNone(runner.argv)
 
 
 if __name__ == "__main__":

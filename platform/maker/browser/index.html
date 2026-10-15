@@ -61,6 +61,30 @@
     </div>
     <button id="launch-playtest" type="button">Start validated run</button>
     <div id="playtest-content" role="status" aria-live="polite"></div>
+    <section id="playtest-persistence" class="playtest-persistence" aria-label="Save and replay">
+      <h3>Save &amp; replay</h3>
+      <div class="playtest-controls">
+        <label>Manual slot
+          <select id="playtest-save-slot">
+            <option value="1">Slot 1</option><option value="2">Slot 2</option>
+            <option value="3">Slot 3</option><option value="4">Slot 4</option>
+            <option value="5">Slot 5</option><option value="6">Slot 6</option>
+            <option value="7">Slot 7</option><option value="8">Slot 8</option>
+            <option value="9">Slot 9</option><option value="10">Slot 10</option>
+          </select>
+        </label>
+        <button id="playtest-save-run" type="button" disabled>Save run</button>
+        <button id="playtest-load-run" type="button" disabled>Load run</button>
+        <button id="playtest-migrate-save" type="button" disabled>Migrate M8 save</button>
+        <button id="playtest-replay-download" type="button" disabled>Download replay</button>
+      </div>
+      <div class="playtest-controls">
+        <label class="file-button">Import replay to verify
+          <input id="playtest-replay-file" type="file" accept="application/json,.json">
+        </label>
+        <button id="playtest-replay-verify" type="button" disabled>Verify replay</button>
+      </div>
+    </section>
     <div id="playtest-live" hidden>
       <canvas id="playtest-scene" width="840" height="420" aria-label="2.5D playtest scene"></canvas>
       <p id="playtest-status" role="status" aria-live="polite"></p>

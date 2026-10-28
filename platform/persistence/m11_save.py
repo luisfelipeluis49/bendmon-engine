@@ -33,6 +33,9 @@ _IDENTIFIER = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}\Z")
 class M11SaveError(ValueError):
     """A save envelope is malformed, incompatible, or not a stable snapshot."""
 
+    def __init__(self, message: str):
+        super().__init__(message[:512])
+
 
 @dataclass(frozen=True, slots=True)
 class SaveExpectation:
@@ -206,7 +209,7 @@ def _pairs(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
     result: dict[str, Any] = {}
     for key, value in pairs:
         if key in result:
-            raise M11SaveError(f"duplicate JSON object key: {key}")
+            raise M11SaveError("duplicate JSON object key in save")
         result[key] = value
     return result
 

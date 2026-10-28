@@ -28,6 +28,7 @@ import ./engine/world/encounters.bend as WorldEncounters
 import ./engine/world/geometry.bend as WorldGeometry
 import ./engine/world/events.bend as WorldEvents
 import ./engine/world/playtest_boot_wire.bend as PlaytestBootWire
+import ./engine/performance/parallel_workload.bend as EncounterBatch
 
 # BOOT-1: adding zero preserves the headless accumulator for every Nat state.
 # This is a toolchain/bootstrap law, not a battle or progression specification.
@@ -508,6 +509,30 @@ law battle_typed_move_component_bounds:
         Multi.TypeId{1n}, Multi.TypeId{2n}, Multi.TypeId{3n},
         Multi.TypeId{4n}])))) == True{} : Bool}
 
+
+# M12-BATCH-EMPTY: an empty independent workload samples no RNG and emits no
+# encounter results. This law covers the pure batch boundary, not host timing.
+law encounter_batch_empty:
+  {EncounterBatch.run_batch([]) == EncounterBatch.BatchAccepted{[]}
+    : EncounterBatch.BatchResult}
+
+# M12-BATCH-SINGLE: the small-job route evaluates exactly the submitted job;
+# its explicit RNG remains owned by that job rather than a global batch stream.
+law encounter_batch_single:
+  for job: EncounterBatch.EncounterJob
+  {EncounterBatch.run_batch([job]) ==
+    EncounterBatch.BatchAccepted{[EncounterBatch.evaluate_job(job)]}
+    : EncounterBatch.BatchResult}
+
+# M12-BATCH-ORDER: a two-leaf parallel branch returns the left result before
+# the right result regardless of worker completion order.
+law encounter_batch_branch_order:
+  for left: EncounterBatch.EncounterJob
+  for right: EncounterBatch.EncounterJob
+  {EncounterBatch.run_tree(EncounterBatch.JobBranch{
+      EncounterBatch.JobLeaf{left}, EncounterBatch.JobLeaf{right}}) ==
+    [EncounterBatch.evaluate_job(left), EncounterBatch.evaluate_job(right)]
+    : List<&2, WorldEncounters.EntryResult>}
 
 # Approved future proof obligations (2026-09-21 decision packet):
 #

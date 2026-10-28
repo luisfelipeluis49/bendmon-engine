@@ -1,0 +1,62 @@
+{
+  "lockVersion": 1,
+  "sourceIdentity": "sha256 of the exact UTF-8 schema file bytes; updates require compatibility review",
+  "schemas": {
+    "content-0/catalog.schema.json": "1be8de508cb01d8385dd7acd5da686e1d07f45f547a0d258be1145c3bc2cc4f8",
+    "content-0/dialogue.schema.json": "7057be2d062fab6dca654700ceaed197759aa6d1835b6b163b41bb2cf01c80fc",
+    "content-0/encounter.schema.json": "6295b8e81d7bd026125384f5d67741add1a2c9d2082c4623447864b957a8d921",
+    "content-0/event.schema.json": "35871b3ceabdfa00b0b66643301addee9c6d34cc3035bec829f95e0f63f76ff2",
+    "content-0/item.schema.json": "1cc6522b668b4701940a7f2f0a3c655007490c986ad9f199db02fdb86adc2899",
+    "content-0/manifest.schema.json": "8f8bb30f4e51665af260423e0e8be3c823a1a52dfb48fb3c0bc7633a62fa7825",
+    "content-0/map.schema.json": "5e348d323c646d2dc8f8731e3739f2e03d5b50116b1a0d1df3bc79b8769df82b",
+    "content-0/mix-recipe.schema.json": "df220a647f10306577396eb35080da6b6338bc5edccead90305d82ae682e8e94",
+    "content-0/mix-result.schema.json": "6d70dfd09e61e30ba1d086715df5d4c45dd6c84f29222d57a8f7ec024997ab00",
+    "content-0/move.schema.json": "dc2ae8abf4a80e624c133b181ebd4811415e77ec2963acb9788e3d5cad13f4b7",
+    "content-0/project.schema.json": "2109ac0a182e62558faa718540745dd51e188405ad6169af94e5062cf87bc7fd",
+    "content-0/shop.schema.json": "8a12f3ec2863f065da853070f352b70167494d3d3ea812dbac1898fdbf361fc5",
+    "content-0/trainer.schema.json": "c9538ef0e575fe1835f2f1ae115503697e0bd8cd6acc55813528ae482903dd94",
+    "content-0/world/encounter-region.schema.json": "f8ca92f35d0f98db26d8db6e15532b04800b066a11ee36345f85d5424fcd666a",
+    "content-0/world/nav-surface.schema.json": "f0469b5bd9bf767b5152e049288b2eb32188102e375fe41899a971217e0d660d",
+    "content-0/world/npc.schema.json": "36ef131a1879747c6ae6e4a75a781276ec12bcf0662fdd1be9f3dff6dd340011",
+    "content-0/world/transition.schema.json": "54bbf84b309baa2613d20e045ec49792a63378793fa028159cbd20e3a8b25cfe",
+    "content-0/world/trigger.schema.json": "a6b0e6052357b4ca986d694273b44561d20c7d8fc273d49da74907897ab978cb"
+  },
+  "invariants": {
+    "schemaVersion": "content-0",
+    "closedRootObjects": true,
+    "idPattern": "^[a-z][a-z0-9_-]{0,31}:[a-z][a-z0-9_-]{0,31}$",
+    "catalogSpeciesMaxItems": 256,
+    "mapArrayCaps": {
+      "encounters": 256,
+      "npcs": 256,
+      "triggers": 256,
+      "encounterRegions": 256,
+      "transitions": 256
+    },
+    "manifestRequired": [
+      "schemaVersion",
+      "catalogs",
+      "maps",
+      "encounters",
+      "assets"
+    ],
+    "projectRequired": [
+      "schemaVersion",
+      "id",
+      "name",
+      "ruleset",
+      "entryMap"
+    ],
+    "engineLimits": {
+      "maxDepth": 16,
+      "maxEntities": 256,
+      "maxFiles": 64,
+      "maxJsonBytes": 1048576,
+      "maxPerRecord": 256,
+      "maxTotalBytes": 8388608,
+      "maxTotalRefs": 4096,
+      "maxWireBytes": 2097152,
+      "maxWireTokens": 140000
+    }
+  }
+}

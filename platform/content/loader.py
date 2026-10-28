@@ -20,6 +20,7 @@ from .world_limits import (MAX_DEPTH, MAX_ENTITIES, MAX_FILES, MAX_JSON_BYTES,
                            MAX_PATH, MAX_PER_RECORD, MAX_TOTAL_BYTES,
                            MAX_TOTAL_REFS, MAX_WIRE_BYTES, MAX_WIRE_TOKENS,
                            WORLD_COORD_LIMIT)
+from .process import MAX_KERNEL_STDERR, MAX_KERNEL_STDOUT, run_bounded
 
 from .models import (Asset, AssetId, AudioBinding, CameraProfile, CapacityTier, Catalog, CatalogId, Encounter,
                      EvolutionPredicate, EvolutionRule,
@@ -37,6 +38,14 @@ PATH_COMPONENT_RE = re.compile(r"[A-Za-z0-9_.-]+\Z")
 SHA_RE = re.compile(r"[0-9a-f]{64}\Z")
 
 
+def _diagnostic_text(value: str, limit: int) -> str:
+    if len(value) <= limit:
+        return value
+    suffix = "...[sha256:" + hashlib.sha256(
+        value.encode("utf-8", "backslashreplace")).hexdigest()[:16] + "]"
+    return value[:limit - len(suffix)] + suffix
+
+
 @dataclass(frozen=True, order=True, slots=True)
 class Diagnostic:
     code: str
@@ -44,6 +53,17 @@ class Diagnostic:
     pointer: str
     entity_id: str | None
     message: str
+
+    def __post_init__(self) -> None:
+        # Error locations may contain raw unknown keys before schema validation.
+        # Bound the exported record itself, including non-string claimed IDs,
+        # so every caller (CLI, maker and importer) gets the same safe boundary.
+        for field, limit in (("code", 64), ("file", 240), ("pointer", 512),
+                             ("message", 512)):
+            object.__setattr__(self, field, _diagnostic_text(getattr(self, field), limit))
+        entity_id = self.entity_id
+        object.__setattr__(self, "entity_id", _diagnostic_text(entity_id, 128)
+                           if isinstance(entity_id, str) else None)
 
     def as_dict(self) -> dict[str, Any]:
         return {"code": self.code, "file": self.file, "pointer": self.pointer,
@@ -79,13 +99,14 @@ def _pairs(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
     out: dict[str, Any] = {}
     for key, value in pairs:
         if key in out:
-            raise ValueError(f"duplicate key {key!r}")
+            # Keys can be almost a whole document; never echo untrusted text.
+            raise ValueError("duplicate object key")
         out[key] = value
     return out
 
 
 def _bad_number(value: str) -> Any:
-    raise ValueError(f"unsupported number {value!r}")
+    raise ValueError("unsupported non-integer number")
 
 
 def _decode(raw: bytes, file: str) -> Any:
@@ -115,8 +136,11 @@ def _decode(raw: bytes, file: str) -> Any:
                 depth -= 1
         value = json.loads(text, object_pairs_hook=_pairs, parse_float=_bad_number,
                            parse_constant=_bad_number)
-    except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
-        _fail("json", file, "", f"invalid strict UTF-8 JSON: {exc}")
+    except (UnicodeDecodeError, json.JSONDecodeError, ValueError, RecursionError) as exc:
+        reason = str(exc)
+        if len(reason) > 240:
+            reason = reason[:237] + "..."
+        _fail("json", file, "", f"invalid strict UTF-8 JSON: {reason}")
     stack = [(value, 1)]
     while stack:
         node, depth = stack.pop()
@@ -469,16 +493,16 @@ class _Root:
                     _fail("file-size", rel, "", f"file exceeds {max_bytes} bytes")
                 if self.total + info.st_size > MAX_TOTAL_BYTES:
                     _fail("total-size", rel, "", "project exceeds 8 MiB")
-                raw = b""
+                raw = bytearray()
                 while len(raw) <= max_bytes:
                     chunk = os.read(fd, min(65536, max_bytes + 1 - len(raw)))
                     if not chunk:
                         break
-                    raw += chunk
+                    raw.extend(chunk)
                 if len(raw) != info.st_size or len(raw) > max_bytes:
                     _fail("file-changed", rel, "", "file size changed during bounded read")
                 self.total += len(raw)
-                return raw
+                return bytes(raw)
             finally:
                 os.close(fd)
         except ContentError:
@@ -600,11 +624,11 @@ def _kernel(tokens: list[int], kernel_path: os.PathLike[str] | str,
             stream.write(wire)
             stream.flush()
             # `--` terminates trusted Bend runtime flags; IO.args receives one path.
-            result = subprocess.run([executable, "--", os.path.abspath(stream.name)],
-                                    stdin=subprocess.DEVNULL, capture_output=True, timeout=15,
-                                    check=False)
+            result = run_bounded([executable, "--", os.path.abspath(stream.name)], timeout=15)
     except (OSError, subprocess.TimeoutExpired) as exc:
         raise InfrastructureError(f"content kernel unavailable: {exc}") from None
+    if len(result.stdout) > MAX_KERNEL_STDOUT or len(result.stderr) > MAX_KERNEL_STDERR:
+        raise InfrastructureError("content kernel output exceeded 64 KiB limit")
     try:
         stdout = result.stdout.decode("ascii", "strict")
         stderr = result.stderr.decode("ascii", "strict")
@@ -910,6 +934,12 @@ def load_project(path: os.PathLike[str] | str, kernel_path: os.PathLike[str] | s
         _unique([str(v.id) for v in moves] + [str(v.id) for v in mix_results], "manifest.json", "/mixResults", "move/result ID")
         mix_results.sort(key=lambda v: str(v.id))
 
+        # These registries are final before recipes and level-up references are
+        # checked. Rebuilding them per reference multiplies load work at the
+        # 4096-reference ceiling without adding validation (M12 load profile).
+        move_by_id = {str(record.id): record for record in moves}
+        move_ids = set(move_by_id)
+        mix_result_ids = {str(record.id) for record in mix_results}
         mix_recipes: list[MixRecipe] = []
         for rel in recipe_paths:
             d = _object(_doc(root, rel), {"schemaVersion", "id", "sourceA", "sourceB", "result"}, rel, "")
@@ -919,16 +949,15 @@ def load_project(path: os.PathLike[str] | str, kernel_path: os.PathLike[str] | s
             result_id = ResultId(_id(d["result"], rel, "/result"))
             if source_a == source_b:
                 _fail("mix-self-pair", rel, "/sourceB", "recipe sources must be distinct", recipe_id)
-            if str(source_a) not in {str(v.id) for v in moves}:
+            if str(source_a) not in move_ids:
                 _fail("reference", rel, "/sourceA", "source move does not resolve to a registered base move", recipe_id)
-            if str(source_b) not in {str(v.id) for v in moves}:
+            if str(source_b) not in move_ids:
                 _fail("reference", rel, "/sourceB", "source move does not resolve to a registered base move", recipe_id)
-            move_by_id = {str(v.id): v for v in moves}
             for pointer, source in (("/sourceA", source_a), ("/sourceB", source_b)):
                 source_record = move_by_id[str(source)]
                 if source_record.components is None or len(source_record.components) != 1:
                     _fail("mix-source-components", rel, pointer, "recipe source must have exactly one declared component", recipe_id)
-            if str(result_id) not in {str(v.id) for v in mix_results}:
+            if str(result_id) not in mix_result_ids:
                 _fail("reference", rel, "/result", "result does not resolve to a registered mix descriptor", recipe_id)
             mix_recipes.append(MixRecipe(recipe_id, source_a, source_b, result_id))
         if len(mix_recipes) > MAX_ENTITIES:
@@ -968,7 +997,7 @@ def load_project(path: os.PathLike[str] | str, kernel_path: os.PathLike[str] | s
                     entry = _object(raw_level_move, {"level", "move"}, rel, move_pointer)
                     level = _uint(entry["level"], 1, 200, rel, move_pointer + "/level")
                     move = MoveId(_id(entry["move"], rel, move_pointer + "/move"))
-                    if str(move) not in {str(record.id) for record in moves}:
+                    if str(move) not in move_ids:
                         _fail("reference", rel, move_pointer + "/move",
                               "level-up move does not resolve", s.get("id"))
                     level_moves.append(LevelMove(level, move))
@@ -1006,7 +1035,6 @@ def load_project(path: os.PathLike[str] | str, kernel_path: os.PathLike[str] | s
                       "starter species must resolve to a species with progression",
                       str(starter.species))
         recipe_ids = {str(recipe.id) for recipe in mix_recipes}
-        move_ids = {str(move.id) for move in moves}
         all_rule_ids: list[str] = []
         for species, rel, position in species_locations:
             for rule_index, rule in enumerate(species.evolutions):

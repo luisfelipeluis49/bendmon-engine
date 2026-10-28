@@ -19,11 +19,12 @@ import time
 import uuid
 from typing import Any, Callable
 
-from content.loader import ContentError, InfrastructureError, load_project
-from content.world_limits import MAX_JSON_BYTES, MAX_TOTAL_BYTES
+from content.loader import ContentError, InfrastructureError, _Root, load_project
+from content.world_limits import MAX_FILES, MAX_JSON_BYTES, MAX_TOTAL_BYTES
 from .playtest import (FrozenPlaytestSnapshot, PlaytestError,
                        PlaytestUnavailable, freeze_project, start_playtest)
 from .command_input import CommandInputError, parse_command
+from .request_json import RequestJSONError, decode_json
 from .presentation_content import presentation_content
 from .runtime_process import RuntimeProcessError, run_runtime
 from content.m10_command_wire import (FastTravel, M10Command, M10CommandWireError,
@@ -49,6 +50,7 @@ _MEDIA = {
     "audio/wav": ".wav",
 }
 MAX_DOCUMENTS_BYTES = MAX_JSON_BYTES * 64
+MAX_PROJECT_SCAN_ENTRIES = 8192
 MAX_ASSET_BYTES = min(MAX_TOTAL_BYTES, 8 * 1024 * 1024)
 MAX_PLAYTEST_SESSIONS = 32
 MAX_PLAYTEST_COMMANDS = 4096
@@ -78,33 +80,52 @@ class MakerError(Exception):
 
     def __init__(self, code: str, message: str):
         self.code = code
-        self.message = message
-        super().__init__(message)
+        self.message = message[:512]
+        super().__init__(self.message)
 
 
-def _pairs(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
-    result: dict[str, Any] = {}
-    for key, value in pairs:
-        if key in result:
-            raise ValueError(f"duplicate JSON key {key!r}")
-        result[key] = value
-    return result
-
-
-def _no_float(value: str) -> Any:
-    raise ValueError("non-integer JSON number is not supported")
-
-
-def decode_request(raw: bytes, limit: int = MAX_DOCUMENTS_BYTES) -> Any:
+def decode_request(raw: bytes, limit: int = MAX_DOCUMENTS_BYTES) -> object:
     """Decode bounded strict JSON, rejecting duplicate keys and non-finite numbers."""
     if len(raw) > limit:
         raise MakerError("request-too-large", f"request exceeds {limit} bytes")
     try:
-        text = raw.decode("utf-8", "strict")
-        return json.loads(text, object_pairs_hook=_pairs, parse_float=_no_float,
-                          parse_constant=_no_float)
-    except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
+        return decode_json(raw)
+    except RequestJSONError as exc:
         raise MakerError("invalid-json", f"request is not strict JSON: {exc}") from None
+
+
+def _scan_directory(directory: Path, pending: list[Path], documents: list[Path],
+                    count: int) -> int:
+    source = _Root(directory)
+    try:
+        with os.scandir(source.fd) as entries:
+            for entry in entries:
+                count += 1
+                if count > MAX_PROJECT_SCAN_ENTRIES:
+                    raise MakerError('project-too-large', 'project scan exceeds 8192 entries')
+                if entry.is_symlink():
+                    raise MakerError('project-path', 'project contains a symbolic link')
+                path = directory / entry.name
+                if entry.is_dir(follow_symlinks=False):
+                    pending.append(path)
+                elif entry.name.endswith('.json'):
+                    documents.append(path)
+                    if len(documents) > MAX_FILES:
+                        raise MakerError('project-too-large', 'project exceeds 64 JSON documents')
+        return count
+    finally:
+        source.close()
+
+
+def _document_paths(root: Path) -> tuple[Path, ...]:
+    """Enumerate lazily under a bounded, no-follow filesystem scan."""
+    pending, documents, count = [root], [], 0
+    try:
+        while pending:
+            count = _scan_directory(pending.pop(), pending, documents, count)
+    except (ContentError, OSError):
+        raise MakerError('project-path', 'project directory is missing or unsafe') from None
+    return tuple(sorted(documents))
 
 
 def _json_bytes(value: Any, file: str) -> bytes:
@@ -201,6 +222,8 @@ class MakerService:
     def save_documents(self, project_id: str, documents: Any) -> dict[str, Any]:
         if not isinstance(documents, dict) or not documents:
             raise MakerError("documents", "documents must be a non-empty object")
+        if len(documents) > MAX_FILES:
+            raise MakerError('documents-too-large', 'document bundle exceeds 64 JSON documents')
         normalized = {_doc_path(path): value for path, value in documents.items()}
         payloads = {path: _json_bytes(value, path) for path, value in normalized.items()}
         if sum(map(len, payloads.values())) > MAX_DOCUMENTS_BYTES:
@@ -645,35 +668,52 @@ class MakerService:
     def _project_payload(self, project_id: str) -> dict[str, Any]:
         root = self.project_path(project_id)
         documents: dict[str, Any] = {}
-        for path in sorted(root.rglob("*.json")):
+        raw_total = canonical_total = 0
+        for path in _document_paths(root):
             if path.is_symlink() or not path.resolve().is_relative_to(root.resolve()):
                 raise MakerError("project-path", "project contains a symbolic link")
             rel = path.relative_to(root).as_posix()
-            raw = path.read_bytes()
-            if len(raw) > MAX_JSON_BYTES:
-                raise MakerError("project-too-large", "project documents exceed the service limit")
+            raw = self._read_project_bytes(path)
+            raw_total += len(raw)
+            if raw_total > MAX_DOCUMENTS_BYTES:
+                raise MakerError('project-too-large', 'raw document bundle exceeds the service limit')
             documents[rel] = self._decode_file(raw, rel)
-            if sum(len(_json_bytes(value, file)) for file, value in documents.items()) > MAX_DOCUMENTS_BYTES:
+            canonical_total += len(_json_bytes(documents[rel], rel))
+            if canonical_total > MAX_DOCUMENTS_BYTES:
                 raise MakerError("project-too-large", "project documents exceed the service limit")
         project = documents.get("project.json", {})
+        if not isinstance(project, dict):
+            # Draft documents may be invalid; metadata extraction must not turn
+            # a recoverable shape diagnostic into an AttributeError.
+            project = {}
         return {"id": project_id, "name": project.get("name", ""),
                 "projectId": project.get("id", ""), "documents": documents}
 
     @staticmethod
     def _decode_file(raw: bytes, file: str) -> Any:
         try:
-            return json.loads(raw.decode("utf-8", "strict"), object_pairs_hook=_pairs,
-                              parse_float=_no_float, parse_constant=_no_float)
-        except (UnicodeDecodeError, json.JSONDecodeError, ValueError):
+            return decode_request(raw, MAX_JSON_BYTES)
+        except MakerError:
             raise MakerError("invalid-project-json", f"{file}: project document is invalid JSON") from None
 
     def _read_json(self, path: Path) -> dict[str, Any]:
-        if path.is_symlink() or not path.is_file() or path.stat().st_size > MAX_JSON_BYTES:
-            raise MakerError("project-file", f"{path.name}: file is missing, unsafe, or too large")
-        value = self._decode_file(path.read_bytes(), path.name)
+        value = self._decode_file(self._read_project_bytes(path), path.name)
         if not isinstance(value, dict):
             raise MakerError("project-file", f"{path.name}: expected an object")
         return value
+
+    @staticmethod
+    def _read_project_bytes(path: Path) -> bytes:
+        """Apply shipping no-follow and pre-allocation byte bounds to drafts."""
+        try:
+            source = _Root(path.parent)
+            try:
+                return source.read(path.name, MAX_JSON_BYTES)
+            finally:
+                source.close()
+        except (ContentError, OSError):
+            raise MakerError('project-file',
+                             f'{path.name}: file is missing, unsafe, or too large') from None
 
     def _unmanifested_documents(self, root: Path) -> list[dict[str, Any]]:
         manifest = self._read_json(root / "manifest.json")
@@ -684,7 +724,7 @@ class MakerService:
             if isinstance(values, list):
                 referenced.update(value for value in values if isinstance(value, str))
         extras = []
-        for path in sorted(root.rglob("*.json")):
+        for path in _document_paths(root):
             if path.is_symlink() or not path.resolve().is_relative_to(root.resolve()):
                 raise MakerError("project-path", "project contains a symbolic link")
             relative = path.relative_to(root).as_posix()

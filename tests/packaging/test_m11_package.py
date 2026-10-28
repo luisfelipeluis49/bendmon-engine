@@ -1,6 +1,7 @@
 """Build, verify, tamper-check and launch the copied M11 package."""
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -34,6 +35,10 @@ class M11PackageTests(unittest.TestCase):
         manifest = json.loads((self.package / "package.json").read_text())
         self.assertGreaterEqual(len(manifest["files"]), 30)
         self.assertEqual(report["contentHash"], manifest["contentHash"])
+        lock = json.loads((self.package / 'schemas/compatibility-lock.json').read_text())
+        for relative, expected in lock['schemas'].items():
+            shipped = self.package / 'schemas' / relative
+            self.assertEqual(hashlib.sha256(shipped.read_bytes()).hexdigest(), expected)
 
     def test_altered_file_extra_file_and_unsafe_manifest_path_reject(self) -> None:
         target = self.package / "build/content-kernel"

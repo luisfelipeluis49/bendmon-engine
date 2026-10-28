@@ -51,6 +51,10 @@ def _sources() -> list[tuple[str, Path]]:
         "scripts/run_m10_maker.py", "scripts/verify_m11_package.py",
         "build/content-kernel",
         "build/m10_dynamic_runtime"))
+    # Creators receive the reviewed contract identities alongside the same
+    # shipping validator; these inert schemas never authorize executable code.
+    for source in sorted((ROOT / 'schemas').rglob('*.json')):
+        selected.append((source.relative_to(ROOT).as_posix(), source))
     for source in sorted((ROOT / "examples/m10-starter").rglob("*")):
         if source.is_symlink():
             raise ValueError(f"starter content may not contain symlinks: {source.relative_to(ROOT)}")

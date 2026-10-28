@@ -14,6 +14,7 @@ from unittest.mock import patch
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / 'platform'))
 from content.loader import ContentError, InfrastructureError, load_project
+from content.process import ProcessResult
 
 
 class ContentIntegrationTests(unittest.TestCase):
@@ -141,14 +142,15 @@ class ContentIntegrationTests(unittest.TestCase):
         self.rejected('ppm')
 
     def test_infrastructure_failure_does_not_accept_content(self):
-        for result in [subprocess.CompletedProcess([], 0, b'OK\nextra', b''),
-                       subprocess.CompletedProcess([], 0, b'OK\n', b'warning'),
-                       subprocess.CompletedProcess([], 2, b'ERR 1 0 0\n', b''),
-                       subprocess.CompletedProcess([], 2, b'', b'ERR 9 0 0\n'),
-                       subprocess.CompletedProcess([], 2, b'', b'ERR 1 999 0\n')]:
-            with patch('content.loader.subprocess.run', return_value=result), self.assertRaises(InfrastructureError):
+        results = [ProcessResult(0, b'OK\nextra', b''),
+                   ProcessResult(0, b'OK\n', b'warning'),
+                   ProcessResult(2, b'ERR 1 0 0\n', b''),
+                   ProcessResult(2, b'', b'ERR 9 0 0\n'),
+                   ProcessResult(2, b'', b'ERR 1 999 0\n')]
+        for result in results:
+            with patch('content.loader.run_bounded', return_value=result), self.assertRaises(InfrastructureError):
                 load_project(self.project)
-        with patch('content.loader.subprocess.run', side_effect=subprocess.TimeoutExpired('kernel', 15)), self.assertRaises(InfrastructureError):
+        with patch('content.loader.run_bounded', side_effect=subprocess.TimeoutExpired('kernel', 15)), self.assertRaises(InfrastructureError):
             load_project(self.project)
 
 

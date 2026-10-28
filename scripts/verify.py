@@ -215,7 +215,12 @@ def main():
         else:
             native_result = run(f'M8 {stem} native golden',
                                 [native, '--threads', '1', '--gpu', 'off'])
-        js_result = run(f'M8 {stem} JS golden', ['node', javascript])
+        # Bend 2.0.27 (pinned 63bee70b55a71024d6bdcb49a745111bc54b114e)
+        # emits recursive Nat operations for this fixed-point encounter fixture.
+        # Node's default stack overflows; retain the exact native/JS comparison.
+        javascript_command = (['node', '--stack-size=8192', javascript]
+                              if stem == 'encounters_test' else ['node', javascript])
+        js_result = run(f'M8 {stem} JS golden', javascript_command)
         assert native_result.stdout == js_result.stdout
         if stem != 'loaded_save_test':
             assert re.fullmatch(r'\[(?:1n|True\{\})(?:, (?:1n|True\{\}))*\]',
@@ -460,6 +465,16 @@ def main():
     run('M11 offline package verification and copied playtest',
         [sys.executable, '-m', 'unittest', 'discover', '-s', 'tests/packaging',
          '-p', 'test_*.py', '-v'], timeout=180)
+    run('M12 hostile inputs, resource caps, schema stability and parallel parity',
+        [sys.executable, '-W', 'error::ResourceWarning', '-m', 'unittest',
+         'discover', '-s', 'tests/m12', '-t', '.', '-p', 'test_*.py', '-v'],
+        timeout=360)
+    run('M12 project loading and CPU batch profiles',
+        [sys.executable, 'scripts/profile_m12.py', '--output',
+         EVIDENCE / 'm12-profile.json'], timeout=300)
+    run('M12 learning-reference load profile',
+        [sys.executable, 'scripts/benchmark_m12_loading.py', '--label', 'gate-current',
+         '--repeats', '3', '--output', EVIDENCE / 'm12-load-current.json'], timeout=180)
     result = run('original project loads through Bend', [sys.executable, 'scripts/validate_project.py', 'examples/original-demo'])
     loaded = json.loads(result.stdout)
     assert loaded['ok'] is True and len(loaded['contentHash']) == 64
@@ -470,7 +485,7 @@ def main():
     world = json.loads(world_result.stdout)
     assert world['ok'] is True and world['counts']['navigationFaces'] >= 1
     assert world['counts']['events'] >= 1 and world['counts']['encounterRegions'] >= 1
-    print(f'PASS: {len(RESULTS)} checks; laws, native/JS boundaries, persistence, replays, offline packaging, CPU parallelism, presentation, content and milestone fixtures.')
+    print(f'PASS: {len(RESULTS)} checks; laws, native/JS boundaries, persistence, replays, offline packaging, hardening, profiles, CPU parallelism, presentation, content and milestone fixtures.')
 
 
 if __name__ == '__main__':
@@ -482,4 +497,4 @@ if __name__ == '__main__':
     finally:
         EVIDENCE.mkdir(parents=True, exist_ok=True)
         (EVIDENCE / 'verification.json').write_text(json.dumps({'checks': RESULTS,
-            'scope': 'M0-M11 local deterministic engine, validated content and world, persistence and replay codecs, runtime-backed maker save/resume/replay service tests, offline package verification, focused native/JS parity, packaged maker playtest, browser controls, CPU graphics and SDL3 smoke'}, indent=2) + '\n')
+            'scope': 'M0-M12 local deterministic engine, validated content and world, persistence and replay codecs, runtime-backed maker save/resume/replay service tests, offline package verification, hostile input and resource caps, schema stability, load/CPU profiles, focused native/JS parity, packaged maker playtest, browser controls, CPU graphics and SDL3 smoke'}, indent=2) + '\n')

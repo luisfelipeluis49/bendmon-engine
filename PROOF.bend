@@ -173,3 +173,12 @@ def Laws.m10_boot_seed():
 
 def Laws.battle_typed_move_component_bounds():
   {==}
+
+def Laws.encounter_batch_empty():
+  {==}
+
+def Laws.encounter_batch_single(job):
+  {==}
+
+def Laws.encounter_batch_branch_order(left, right):
+  {==}

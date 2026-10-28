@@ -27,6 +27,9 @@ _DIGEST = re.compile(r"[0-9a-f]{64}\Z")
 class ReplayFileError(ValueError):
     """Raised for malformed, incompatible, or unverifiable replay data."""
 
+    def __init__(self, message: str):
+        super().__init__(message[:512])
+
 
 def _uint(value: Any, name: str, maximum: int = 0xFFFFFFFF) -> int:
     if type(value) is not int or not 0 <= value <= maximum:
@@ -200,7 +203,7 @@ def _pairs(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
     result: dict[str, Any] = {}
     for key, value in pairs:
         if key in result:
-            raise ReplayFileError(f"duplicate JSON key: {key!r}")
+            raise ReplayFileError("duplicate JSON key in replay object")
         result[key] = value
     return result
 
@@ -228,7 +231,7 @@ def decode_replay(data: bytes, *, expected_ruleset: str = RULESET_VERSION,
                            parse_constant=lambda _: (_ for _ in ()).throw(ReplayFileError("non-finite numbers are forbidden")))
     except ReplayFileError:
         raise
-    except (UnicodeDecodeError, json.JSONDecodeError, RecursionError) as exc:
+    except (UnicodeDecodeError, ValueError, RecursionError) as exc:
         raise ReplayFileError(f"invalid replay JSON: {exc}") from exc
     _json_tree(value)
     if canonical_json(value) != data:
